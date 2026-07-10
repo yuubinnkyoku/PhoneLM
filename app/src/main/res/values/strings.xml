@@ -3,6 +3,7 @@
     <string name="app_name">PhoneLM MNN GPU Training Probe</string>
     <string name="small_preset">Small 8×128×100</string>
     <string name="benchmark_preset">Bench 32×512×200</string>
+    <string name="qnn_preset">QNN 2×4×20</string>
     <string name="batch_size">batchSize</string>
     <string name="dimension">dimension</string>
     <string name="steps">steps</string>
@@ -12,5 +13,8 @@
     <string name="run_opencl">OpenCL</string>
     <string name="run_vulkan">Vulkan</string>
     <string name="stop">Stop</string>
+    <string name="run_selected_mode">Run selected</string>
+    <string name="qnn_htp_forward">HTP forward</string>
+    <string name="qnn_htp_forward_dw">HTP forward+dW</string>
+    <string name="qnn_status_loading">QNN status loading…</string>
 </resources>
-

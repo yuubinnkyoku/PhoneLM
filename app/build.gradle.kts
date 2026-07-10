@@ -3,10 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val phoneLmEnableQnn = providers.gradleProperty("phonelm.enableQnn").orElse("false")
+val qairtSdkRoot = providers.gradleProperty("qairt.sdkRoot").orElse("")
+
 android {
     namespace = "com.yuubinnkyoku.phonelm"
     compileSdk = 35
-    ndkVersion = "26.3.11579264"
+    // The local r26d package is incomplete (its build/cmake toolchain is
+    // missing). r27 is installed in full and is pinned for reproducibility.
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.yuubinnkyoku.phonelm"
@@ -24,7 +29,11 @@ android {
 
         externalNativeBuild {
             cmake {
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DPHONELM_ENABLE_QNN=${phoneLmEnableQnn.get()}",
+                    "-DQAIRT_SDK_ROOT=${qairtSdkRoot.get()}",
+                )
                 targets += listOf("phonelm_native")
             }
         }
@@ -77,4 +86,3 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
-

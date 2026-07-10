@@ -1,4 +1,5 @@
 #include "benchmark_runner.h"
+#include "training_engine.h"
 
 #include <android/log.h>
 #include <jni.h>
@@ -53,6 +54,20 @@ Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeGetEnvironmentInfo(
         return toJavaString(env, report);
     } catch (...) {
         const auto report = failedReport("environment probe unknown exception");
+        logcat(report);
+        return toJavaString(env, report);
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeGetQnnStatus(
+    JNIEnv* env, jobject /* receiver */) {
+    try {
+        const auto report = phonelm::TrainingEngine::capabilityReport();
+        logcat(report);
+        return toJavaString(env, report);
+    } catch (const std::exception& exception) {
+        const auto report = std::string("qnn_status=FAILED\nerror=") + exception.what();
         logcat(report);
         return toJavaString(env, report);
     }
@@ -133,6 +148,84 @@ Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeRunBenchmark(
         return toJavaString(env, report);
     } catch (...) {
         const auto report = failedReport("unknown native exception");
+        sink(report);
+        return toJavaString(env, report);
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeRunExecutionMode(
+    JNIEnv* env,
+    jobject /* receiver */,
+    jint executionMode,
+    jint batchSize,
+    jint dimension,
+    jint steps,
+    jint warmupSteps,
+    jfloat learningRate,
+    jlong seed,
+    jobject progressCallback) {
+    bool expected = false;
+    if (!gRunning.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+        const auto report = failedReport("a benchmark is already running");
+        logcat(report);
+        return toJavaString(env, report);
+    }
+    RunningGuard guard;
+    gStopRequested.store(false, std::memory_order_release);
+
+    jmethodID progressMethod = nullptr;
+    if (progressCallback != nullptr) {
+        jclass callbackClass = env->GetObjectClass(progressCallback);
+        if (callbackClass != nullptr) {
+            progressMethod = env->GetMethodID(
+                callbackClass, "onNativeProgress", "(Ljava/lang/String;)V");
+            env->DeleteLocalRef(callbackClass);
+        }
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            progressMethod = nullptr;
+        }
+    }
+    bool callbackEnabled = progressCallback != nullptr && progressMethod != nullptr;
+    auto sink = [&](const std::string& message) {
+        logcat(message);
+        if (!callbackEnabled) return;
+        jstring javaMessage = toJavaString(env, message);
+        if (javaMessage == nullptr) {
+            callbackEnabled = false;
+            return;
+        }
+        env->CallVoidMethod(progressCallback, progressMethod, javaMessage);
+        env->DeleteLocalRef(javaMessage);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            callbackEnabled = false;
+            logcat("progress_callback_error=true");
+        }
+    };
+
+    phonelm::TrainingConfig config;
+    config.backend = phonelm::BackendKind::CPU;
+    config.batchSize = batchSize;
+    config.dimension = dimension;
+    config.steps = steps;
+    config.warmupSteps = warmupSteps;
+    config.learningRate = learningRate;
+    config.seed = static_cast<std::uint64_t>(seed);
+
+    try {
+        const auto report = phonelm::TrainingEngine::run(
+            static_cast<phonelm::ExecutionMode>(executionMode), config, gStopRequested, sink);
+        return toJavaString(env, report);
+    } catch (const std::exception& exception) {
+        const auto report = failedReport(std::string("native mode exception: ") + exception.what());
+        sink(report);
+        return toJavaString(env, report);
+    } catch (...) {
+        const auto report = failedReport("unknown native mode exception");
         sink(report);
         return toJavaString(env, report);
     }

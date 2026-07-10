@@ -10,6 +10,31 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 get_filename_component(PHONELM_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../.." ABSOLUTE)
 set(MNN_ROOT "${PHONELM_ROOT}/third_party/MNN")
 
+option(PHONELM_ENABLE_QNN "Compile the SDK-specific QAIRT/QNN adapter" OFF)
+set(QAIRT_SDK_ROOT "" CACHE PATH "Root of a locally installed QAIRT SDK")
+if(QAIRT_SDK_ROOT STREQUAL "" AND DEFINED ENV{QAIRT_SDK_ROOT})
+    file(TO_CMAKE_PATH "$ENV{QAIRT_SDK_ROOT}" QAIRT_SDK_ROOT)
+endif()
+
+set(PHONELM_QAIRT_SDK_DETECTED 0)
+set(PHONELM_QAIRT_SDK_ROOT_TEXT "NOT_SET")
+if(NOT QAIRT_SDK_ROOT STREQUAL "" AND EXISTS "${QAIRT_SDK_ROOT}")
+    # Header-name discovery is only an installation check. No QNN API is used
+    # until that installed version's headers and official samples are audited.
+    file(GLOB_RECURSE PHONELM_QNN_INTERFACE_HEADERS
+        LIST_DIRECTORIES FALSE "${QAIRT_SDK_ROOT}/QnnInterface.h")
+    if(PHONELM_QNN_INTERFACE_HEADERS)
+        set(PHONELM_QAIRT_SDK_DETECTED 1)
+        set(PHONELM_QAIRT_SDK_ROOT_TEXT "${QAIRT_SDK_ROOT}")
+    endif()
+endif()
+
+if(PHONELM_ENABLE_QNN AND NOT PHONELM_QAIRT_SDK_DETECTED)
+    message(FATAL_ERROR
+        "PHONELM_ENABLE_QNN=ON but no verified QnnInterface.h was found below "
+        "QAIRT_SDK_ROOT='${QAIRT_SDK_ROOT}'. The MNN-only build works with QNN OFF.")
+endif()
+
 if(NOT EXISTS "${MNN_ROOT}/CMakeLists.txt")
     message(FATAL_ERROR
         "Pinned MNN source is missing at ${MNN_ROOT}. "
@@ -61,7 +86,13 @@ add_subdirectory("${MNN_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/mnn" EXCLUDE_FROM_AL
 add_library(phonelm_native SHARED
     native_bridge.cpp
     benchmark_runner.cpp
+    cpu_reference_training.cpp
     mnn_training_test.cpp
+    training_engine.cpp
+    qnn/qnn_backend_info.cpp
+    qnn/qnn_linear_training.cpp
+    qnn/qnn_runtime.cpp
+    qnn/qnn_tensor.cpp
 )
 
 target_include_directories(phonelm_native PRIVATE
@@ -69,6 +100,7 @@ target_include_directories(phonelm_native PRIVATE
     "${MNN_ROOT}/source"
     "${MNN_ROOT}/express"
     "${MNN_ROOT}/schema/current"
+    "${MNN_ROOT}/3rd_party/flatbuffers/include"
     "${MNN_ROOT}/tools/train/source/grad"
     "${MNN_ROOT}/tools/train/source/optimizer"
 )
@@ -77,6 +109,12 @@ target_compile_options(phonelm_native PRIVATE
     -Wall
     -Wextra
     -Wpedantic
+)
+
+target_compile_definitions(phonelm_native PRIVATE
+    PHONELM_ENABLE_QNN=$<BOOL:${PHONELM_ENABLE_QNN}>
+    PHONELM_QAIRT_SDK_DETECTED=${PHONELM_QAIRT_SDK_DETECTED}
+    PHONELM_QAIRT_SDK_ROOT_TEXT="${PHONELM_QAIRT_SDK_ROOT_TEXT}"
 )
 
 target_link_libraries(phonelm_native PRIVATE

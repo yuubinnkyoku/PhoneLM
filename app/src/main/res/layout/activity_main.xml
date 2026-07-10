@@ -12,6 +12,14 @@
         android:textSize="18sp"
         android:textStyle="bold" />
 
+    <TextView
+        android:id="@+id/qnnStatusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:text="@string/qnn_status_loading"
+        android:textSize="11sp" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -32,6 +40,14 @@
             android:layout_weight="1"
             android:text="@string/benchmark_preset"
             android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/qnnPresetButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/qnn_preset"
+            android:textAllCaps="false" />
     </LinearLayout>
 
     <LinearLayout
@@ -46,6 +62,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="@string/batch_size"
+            android:importantForAutofill="no"
             android:inputType="number"
             android:maxLines="1" />
 
@@ -55,6 +72,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="@string/dimension"
+            android:importantForAutofill="no"
             android:inputType="number"
             android:maxLines="1" />
 
@@ -64,8 +82,44 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="@string/steps"
+            android:importantForAutofill="no"
             android:inputType="number"
             android:maxLines="1" />
+    </LinearLayout>
+
+    <Spinner
+        android:id="@+id/executionModeSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/runSelectedModeButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/run_selected_mode"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/qnnForwardButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/qnn_htp_forward"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/qnnForwardDwButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/qnn_htp_forward_dw"
+            android:textAllCaps="false" />
     </LinearLayout>
 
     <LinearLayout
@@ -80,6 +134,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="@string/warmup_steps"
+            android:importantForAutofill="no"
             android:inputType="number"
             android:maxLines="1" />
 
@@ -89,6 +144,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="@string/learning_rate"
+            android:importantForAutofill="no"
             android:inputType="numberDecimal"
             android:maxLines="1" />
     </LinearLayout>

@@ -384,6 +384,13 @@ TrainingOutcome runMnnTraining(const TrainingConfig& config,
     // ExecutorScope is thread-local in MNN. It must live on this JNI worker
     // thread for every expression creation, gradient, and optimizer call.
     ExecutorScope executorScope("PhoneLMTraining", executor);
+    const auto runtimeInfo = Executor::getRuntime();
+    const auto runtimeIterator = runtimeInfo.first.find(requestedMnnBackend);
+    if (runtimeIterator == runtimeInfo.first.end() || runtimeIterator->second == nullptr) {
+        outcome.backendActual = "INITIALIZATION_FAILED";
+        outcome.error = "requested MNN runtime was not present in the new executor";
+        return outcome;
+    }
     BackendTracker tracker(requestedMnnBackend);
     executor->setCallBack(
         [](const std::vector<MNN::Tensor*>&, const MNN::OperatorInfo*) { return true; },
@@ -405,7 +412,9 @@ TrainingOutcome runMnnTraining(const TrainingConfig& config,
     std::vector<float> expectedValues(batchElements, 0.0f);
 
     std::mt19937 generator(static_cast<std::mt19937::result_type>(config.seed));
-    std::uniform_real_distribution<float> inputDistribution(-1.0f, 1.0f);
+    // Keep the MNN and CPU-reference problems identical, and keep values in a
+    // range that is suitable for later fixed-scale QNN quantization probes.
+    std::uniform_real_distribution<float> inputDistribution(-0.25f, 0.25f);
     std::uniform_real_distribution<float> targetDistribution(-0.25f, 0.25f);
     std::uniform_real_distribution<float> initialDistribution(-0.05f, 0.05f);
     for (auto& value : xValues) {

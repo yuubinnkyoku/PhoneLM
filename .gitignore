@@ -2,8 +2,8 @@
 /.idea/
 /local.properties
 /**/build/
+/build/
 /.cxx/
 /app/.cxx/
 /third_party/MNN/
 *.iml
-
