@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneLM MNN GPU Training Probe</string>
+    <string name="small_preset">Small 8×128×100</string>
+    <string name="benchmark_preset">Bench 32×512×200</string>
+    <string name="batch_size">batchSize</string>
+    <string name="dimension">dimension</string>
+    <string name="steps">steps</string>
+    <string name="warmup_steps">warmupSteps</string>
+    <string name="learning_rate">learningRate</string>
+    <string name="run_cpu">CPU</string>
+    <string name="run_opencl">OpenCL</string>
+    <string name="run_vulkan">Vulkan</string>
+    <string name="stop">Stop</string>
+</resources>
+

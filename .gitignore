@@ -1,0 +1,9 @@
+/.gradle/
+/.idea/
+/local.properties
+/**/build/
+/.cxx/
+/app/.cxx/
+/third_party/MNN/
+*.iml
+
