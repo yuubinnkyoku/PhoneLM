@@ -1,7 +1,8 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $OutputDirectory = Join-Path $Root "build\host-tests"
-$Executable = Join-Path $OutputDirectory "cpu_reference_training_test.exe"
+$CpuExecutable = Join-Path $OutputDirectory "cpu_reference_training_test.exe"
+$QnnSdkIndependentExecutable = Join-Path $OutputDirectory "qnn_sdk_independent_test.exe"
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
@@ -9,12 +10,30 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
     -I (Join-Path $Root "app\src\main\cpp") `
     (Join-Path $Root "app\src\main\cpp\cpu_reference_training.cpp") `
     (Join-Path $Root "host_tests\cpu_reference_training_test.cpp") `
-    -o $Executable
+    -o $CpuExecutable
 if ($LASTEXITCODE -ne 0) {
-    throw "Host test compilation failed"
+    throw "CPU host test compilation failed"
 }
 
-& $Executable
+& $CpuExecutable
 if ($LASTEXITCODE -ne 0) {
-    throw "Host tests failed"
+    throw "CPU host tests failed"
+}
+
+& g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic `
+    -I (Join-Path $Root "app\src\main\cpp") `
+    (Join-Path $Root "app\src\main\cpp\cpu_reference_training.cpp") `
+    (Join-Path $Root "app\src\main\cpp\qnn\qnn_backend_info.cpp") `
+    (Join-Path $Root "app\src\main\cpp\qnn\qnn_host_quantization.cpp") `
+    (Join-Path $Root "app\src\main\cpp\qnn\qnn_hybrid_training.cpp") `
+    (Join-Path $Root "app\src\main\cpp\qnn\qnn_runtime_stub.cpp") `
+    (Join-Path $Root "host_tests\qnn_sdk_independent_test.cpp") `
+    -o $QnnSdkIndependentExecutable
+if ($LASTEXITCODE -ne 0) {
+    throw "QNN SDK-independent host test compilation failed"
+}
+
+& $QnnSdkIndependentExecutable
+if ($LASTEXITCODE -ne 0) {
+    throw "QNN SDK-independent host tests failed"
 }

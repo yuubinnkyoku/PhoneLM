@@ -37,7 +37,7 @@ BackendInfo queryBackendInfo() {
     // QNN symbol, version struct, backend library, or data type is invented.
     info.implementationReady = false;
     if (!info.sdkDetected) {
-        info.status = "QNN_SDK_NOT_FOUND";
+        info.status = "BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED";
     } else if (!info.qnnBuildEnabled) {
         info.status = "QNN_DISABLED";
     } else {
@@ -47,4 +47,3 @@ BackendInfo queryBackendInfo() {
 }
 
 }  // namespace phonelm::qnn
-
