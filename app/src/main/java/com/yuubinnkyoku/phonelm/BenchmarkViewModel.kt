@@ -22,7 +22,7 @@ interface BenchmarkEngine {
     fun run(config: BenchmarkConfig, progress: (String) -> Unit): String
     fun requestStop()
 
-    fun qnnStatus(): String = "qnn_status=QNN_SDK_NOT_FOUND"
+    fun qnnStatus(): String = "qnn_status=BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED"
 
     fun runMode(
         mode: ExecutionMode,

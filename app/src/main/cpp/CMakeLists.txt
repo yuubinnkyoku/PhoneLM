@@ -19,11 +19,14 @@ endif()
 set(PHONELM_QAIRT_SDK_DETECTED 0)
 set(PHONELM_QAIRT_SDK_ROOT_TEXT "NOT_SET")
 if(NOT QAIRT_SDK_ROOT STREQUAL "" AND EXISTS "${QAIRT_SDK_ROOT}")
-    # Header-name discovery is only an installation check. No QNN API is used
-    # until that installed version's headers and official samples are audited.
+    # Header-name discovery is only an installation check. It is deliberately
+    # not treated as proof that an Android runtime, HTP libraries, or samples
+    # are usable. scripts/check_qairt.* performs the wider inventory.
     file(GLOB_RECURSE PHONELM_QNN_INTERFACE_HEADERS
         LIST_DIRECTORIES FALSE "${QAIRT_SDK_ROOT}/QnnInterface.h")
-    if(PHONELM_QNN_INTERFACE_HEADERS)
+    file(GLOB_RECURSE PHONELM_QNN_TYPES_HEADERS
+        LIST_DIRECTORIES FALSE "${QAIRT_SDK_ROOT}/QnnTypes.h")
+    if(PHONELM_QNN_INTERFACE_HEADERS AND PHONELM_QNN_TYPES_HEADERS)
         set(PHONELM_QAIRT_SDK_DETECTED 1)
         set(PHONELM_QAIRT_SDK_ROOT_TEXT "${QAIRT_SDK_ROOT}")
     endif()
@@ -31,8 +34,30 @@ endif()
 
 if(PHONELM_ENABLE_QNN AND NOT PHONELM_QAIRT_SDK_DETECTED)
     message(FATAL_ERROR
-        "PHONELM_ENABLE_QNN=ON but no verified QnnInterface.h was found below "
+        "PHONELM_ENABLE_QNN=ON but required QnnInterface.h and QnnTypes.h were not found below "
         "QAIRT_SDK_ROOT='${QAIRT_SDK_ROOT}'. The MNN-only build works with QNN OFF.")
+endif()
+
+# QNN OFF must never compile or link a QAIRT-bound source. Conversely, QNN ON
+# must never fall back to the stub: it selects the audited adapter only. The
+# adapter is intentionally absent until a locally installed SDK can be read.
+set(PHONELM_QNN_RUNTIME_SOURCE qnn/qnn_runtime_stub.cpp)
+set(PHONELM_QNN_OPTIONAL_SOURCES "")
+if(PHONELM_ENABLE_QNN)
+    set(PHONELM_QNN_RUNTIME_QAIRT_SOURCE
+        "${CMAKE_CURRENT_LIST_DIR}/qnn/qnn_runtime_qairt.cpp")
+    if(NOT EXISTS "${PHONELM_QNN_RUNTIME_QAIRT_SOURCE}")
+        message(FATAL_ERROR
+            "BLOCKED_BY_QAIRT_ADAPTER_NOT_IMPLEMENTED: QAIRT headers were found, but "
+            "qnn_runtime_qairt.cpp does not exist. Audit this installed SDK's headers, "
+            "official Android samples, exact libraries, and DSP deployment procedure "
+            "before adding the adapter. The stub is never linked into a QNN-enabled build.")
+    endif()
+    set(PHONELM_QNN_RUNTIME_SOURCE qnn/qnn_runtime_qairt.cpp)
+    list(APPEND PHONELM_QNN_OPTIONAL_SOURCES
+        qnn/qnn_host_quantization.cpp
+        qnn/qnn_hybrid_training.cpp
+    )
 endif()
 
 if(NOT EXISTS "${MNN_ROOT}/CMakeLists.txt")
@@ -91,7 +116,8 @@ add_library(phonelm_native SHARED
     training_engine.cpp
     qnn/qnn_backend_info.cpp
     qnn/qnn_linear_training.cpp
-    qnn/qnn_runtime.cpp
+    ${PHONELM_QNN_RUNTIME_SOURCE}
+    ${PHONELM_QNN_OPTIONAL_SOURCES}
     qnn/qnn_tensor.cpp
 )
 

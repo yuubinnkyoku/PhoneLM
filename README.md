@@ -1,15 +1,35 @@
-# PhoneLM: MNN GPU training / QNN HTP experiment probe
+# PhoneLM: CPU基準実装からQNN HTPへ学習演算を段階的に移すAndroid実験
 
-Androidアプリ内で小規模な線形回帰を学習し、MNN CPU・OpenCL・Vulkanの成立性と、
-将来のQAIRT/QNN HTP学習演算を段階的に検証するための最小プロジェクトです。
+Androidアプリ内の数値的に正しいCPU線形回帰を基準に、QAIRTのQNN C/C++ APIを直接使って
+`P = XW`、続いて`dW = transpose(X)dP`をQNN CPU、QNN HTPへ1演算ずつ移す実験です。
+最初のNPU成功条件は、HTPが生成した`dW`をCPUのFP32 master weightへ適用し、複数stepで
+lossが低下することです。速度は成功条件ではありません。
+
+既存のMNN CPU・OpenCL・Vulkan経路は回帰対象として保持しますが、現在の主作業はQNNです。
+Transformer、Attention、トークナイザ、LLM全体へはまだ進みません。
 
 このREADMEは「ビルドできたこと」と「実機で成立したこと」を区別します。
 
-## 現在の結論
+## 現在の結論（2026-07-11）
+
+現在のQNN進捗statusは`BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED`です。SDKがないため、QNN API、
+共有ライブラリ名、HTP対応dtype、DSP配置方法を推測していません。
+
+| 区分 | 状態 |
+|---|---|
+| QNNなしDebug APK | ビルド済み |
+| CPU基準・量子化・mock混成学習 | ホストテスト済み |
+| Android実機テスト | 未実施（nubia端末未接続、offline emulatorのみ） |
+| QNN CPU実行 | 未実施（SDKなし） |
+| QNN HTP実行 | 未実施（SDKなし） |
+| NPU勾配でloss低下 | 未実施（SDKなし） |
 
 - Android Debug APKは `arm64-v8a` 向けにビルド成功しています。
 - 独立したC++ CPU基準実装は、forward、MSE、`dW`、`dX`、SGD、数値微分、
   100 stepのloss低下をホストで検証済みです。
+- SDK非依存ホストテストはsigned affine/symmetric量子化、逆量子化、scale/zero point、
+  saturation、zero-gradient ratio、shape/buffer overflow、固定shape graph再利用mock、
+  mock forward+dWによる20 stepのloss低下を検証します。mockはQNN/NPU成功を意味しません。
 - MNN 3.5.0のExpress/MNN-Train、OpenCL、Vulkanは同一の`libMNN.so`へ組み込み済みです。
 - nubia Z80 Ultra実機はこの開発環境へ接続されていないため、MNN CPU/OpenCL/Vulkanの
   実行結果は未取得です。GPU成功を主張していません。
@@ -17,7 +37,7 @@ Androidアプリ内で小規模な線形回帰を学習し、MNN CPU・OpenCL・
   `Variable::input()`でもホストコピーします。そのため、標準SGDを用いた今回の経路は
   「完全GPU常駐のoptimizer」ではありません。GPU上で実行された演算は個別に記録します。
 - QAIRT/QNN SDKはローカル環境に見つかりませんでした。QNN APIやライブラリ名は推測せず、
-  抽象層、実行モード、SDK検出、`QNN_SDK_NOT_FOUND`レポートまで実装しています。
+  抽象層、実行モード、SDK inventory、明示的なblockedレポートまで実装しています。
 
 ## 固定バージョン
 
@@ -50,7 +70,7 @@ Windows PowerShell:
 macOS/Linux:
 
 ```sh
-./scripts/fetch_mnn.sh
+sh ./scripts/fetch_mnn.sh
 ```
 
 スクリプトはtagを取得した後、`HEAD`が上記commitと完全一致しなければ失敗します。
@@ -91,8 +111,8 @@ Release（ログは削除されません）:
 
 | 成果物 | サイズ | SHA-256 |
 |---|---:|---|
-| `app-debug.apk`（debug署名済み） | 159,254,721 bytes | `D405CF0E228CD4CD1E17458C5CB1C5472ADDF5314D0545BDC485CDCB4ADA5203` |
-| `app-release-unsigned.apk` | 3,412,386 bytes | `58BFD71B0A6846561763C1E0606CBC9A56EEF6B0B87C8B5C0E582AF294D9286B` |
+| `app-debug.apk`（debug署名済み） | 159,254,721 bytes | `2F3F236B9E0BB3E4D8B59FC6ABE1A2CBD6FBA902684CD2A1BA2D1CEE43FFA18E` |
+| `app-release-unsigned.apk` | 3,418,790 bytes | `145589C6C4FEAF903BDD1EC734EFBA59AC23D060ADDB61CF6303DFC33B465147` |
 | `app-debug-androidTest.apk` | 892,657 bytes | `BFFE9813C31A2C8F6657F3BBCBADE250006AEED841350368E206E9867E1BB615` |
 
 Debug APKが大きいのはnative debug symbolを保持しているためです。Release APKは未署名なので、
@@ -152,14 +172,19 @@ app/src/main/cpp/
   training_engine.cpp/.h
   qnn/
     qnn_backend_info.cpp/.h
+    qnn_host_quantization.cpp/.h
+    qnn_hybrid_training.cpp/.h
     qnn_linear_training.cpp/.h
-    qnn_runtime.cpp/.h
+    qnn_runtime_stub.cpp
+    qnn_runtime.h
     qnn_tensor.cpp/.h
 
 host_tests/
   cpu_reference_training_test.cpp
+  qnn_sdk_independent_test.cpp
 
 scripts/
+  check_qairt.ps1 / check_qairt.sh
   fetch_mnn.ps1 / fetch_mnn.sh
   run_host_tests.ps1
 ```
@@ -175,7 +200,7 @@ MnnTrainingBackend
   Express graph -> MNN-Train autodiff -> official SGD
 
 QnnHtpExperimentalBackend
-  SDK-independent interface and explicit NOT_IMPLEMENTED result
+  SDK-independent interface, fixed-shape MatMul boundary and explicit blocked result
   (SDK未導入のためQNN API呼び出しなし)
 ```
 
@@ -225,8 +250,19 @@ QNN_HTP_FORWARD_DW_DX
 QNN_HTP_FULL_STEP
 ```
 
-QNN modeはSDK未導入の現在、必ず`QNN_SDK_NOT_FOUND`か`NOT_IMPLEMENTED`を返し、
-成功表示にはなりません。
+QNN modeはSDK未導入の現在、必ず`BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED`をstatusに出し、
+詳細errorへ`QNN_SDK_NOT_FOUND`を記録します。成功表示にはなりません。
+
+SDK導入後に各modeへ割り当てる処理は次のとおりです。現在はいずれも未実装です。
+
+| mode | QNNへ移す処理 | CPUに残す処理 | 現在 |
+|---|---|---|---|
+| `QNN_CPU_FORWARD` | QNN CPU forward | 比較値 | SDKなしでblocked |
+| `QNN_HTP_FORWARD` | HTP forward | 比較値 | SDKなしでblocked |
+| `QNN_HTP_FORWARD_CPU_BACKWARD` | HTP forward | loss、`dP`、`dW`、SGD | SDKなしでblocked |
+| `QNN_HTP_FORWARD_DW` | HTP forward、`dW` | loss、`dP`、SGD | SDKなしでblocked |
+| `QNN_HTP_FORWARD_DW_DX` | HTP forward、`dW`、`dX` | loss、`dP`、SGD | SDKなしでblocked |
+| `QNN_HTP_FULL_STEP` | 成立した場合だけ全step | 未確定 | `NOT_IMPLEMENTED` |
 
 Preset:
 
@@ -341,6 +377,13 @@ gradient_check_max_rel_dx=5.10085e-05
 cpu_initial_loss=0.0663977
 cpu_final_loss=0.0594779
 cpu_reference_tests=PASS
+mock_hybrid_initial_loss=0.00120014
+mock_hybrid_final_loss=0.00108842
+mock_hybrid_forward_steps=20
+mock_hybrid_dw_steps=20
+mock_vs_cpu_initial_loss_abs_error=0
+mock_vs_cpu_final_loss_abs_error=0
+qnn_sdk_independent_tests=PASS
 ```
 
 このテストは次を個別にassertします。
@@ -353,6 +396,13 @@ cpu_reference_tests=PASS
 - SGD更新値
 - B=2、D=4、epsilon=1e-3の数値微分
 - B=8、D=128、100 stepのloss低下
+- signed 8/16-bitへ流用できるSDK非依存のscale/zero point計算、量子化、逆量子化
+- saturated value ratioとzero gradient ratio
+- tensor要素数とbuffer byte数のoverflow検出
+- 固定shape MatMul mockを1回だけprepareし、異なるruntime Wで複数回実行
+- mock forward、mock `dW`、CPU loss/`dP`/SGDによるB=2、D=4、20 stepのloss低下
+
+mockのbackend名は常に`MOCK_HOST_CPP`です。QNN CPU、QNN HTP、NPUとして集計しません。
 
 Kotlin/JVMテスト:
 
@@ -451,16 +501,102 @@ global CPU Executorを使います。本アプリはJNI worker thread内でExecu
 
 ## QNN / QAIRT状況
 
-2026-07-10に次をローカルで確認しました。
+2026-07-11に、環境変数、Gradle property、Windowsの標準Qualcomm候補、ユーザー領域、
+Program Files/ProgramData、D/Gドライブ、Ubuntu/Kali WSLを確認しました。
 
-- `QAIRT_SDK_ROOT`、QNN、Qualcomm、Hexagon、SNPE関連環境変数: なし
-- `QnnInterface.h`、`QnnTypes.h`: なし
-- `qnn-net-run`、`qnn-platform-validator`、`snpe-net-run`: なし
-- 標準配置、ユーザーDesktop/Documents/Downloads、Dドライブ: SDKなし
-- 接続実機: なし（offline emulatorのみ）
+- `QAIRT_SDK_ROOT`: 未設定
+- `qairt.sdkRoot`: project/user Gradle propertyのいずれにもなし
+- `QnnInterface.h`、`QnnTypes.h`: 未検出
+- `qnn-net-run`、`qnn-platform-validator`: 未検出
+- QAIRT/Qualcomm/QNN/SNPE/Hexagonに該当する導入済みprogram: 未検出
+- 接続実機: なし（`emulator-5562 offline`のみ）
 
-このため、SDK version、QNN API version、backend library、HTP dtype、Transpose、MatMul、
-ReduceMean、共有buffer、DSP library配置はすべて`NOT_AVAILABLE`または`UNVERIFIED`です。
+外付け/共有ドライブ全体の再帰探索はtimeoutしたため、SDK rootとしては評価していません。
+SDKをそこへ置く場合は明示的に`-SdkRoot`または`QAIRT_SDK_ROOT`を指定してください。
+
+従って、次はすべて`NOT_AVAILABLE`または`UNVERIFIED`です。
+
+- QAIRT SDK version / QNN API version
+- Android arm64 include/library/runtime directory
+- CPU/HTP backend libraryとHTP prepare相当
+- DSP skel/stubと非root Androidでの配置手順
+- SDK同梱の公式Android、CPU backend、HTP backend sample
+- MatMul/Transpose/ReduceMeanのHTP対応dtypeと量子化contract
+- graph create/add/finalize/execute、error文字列化、resource解放の正確なAPI
+
+### 正式なSDK取得
+
+QAIRT/QNN SDKやQualcomm binaryは自動取得せず、非公式mirrorも使用しません。
+
+1. [Qualcomm Software Center](https://softwarecenter.qualcomm.com/)または
+   [QPMの公式導入案内](https://docs.qualcomm.com/bundle/publicresource/topics/80-77512-1/hexagon-dsp-sdk-getting-started.html?product=1601111740010422)
+   からQualcommの正式な配布経路へサインインします。
+2. カタログで利用可能な`Qualcomm AI Runtime SDK`を選択し、対象Android/SoCに必要な
+   package/add-onを取得します。表示される利用規約、export control、entitlementに従います。
+3. SDKを任意のローカルdirectoryへ展開し、そのrootを本projectへ渡します。
+4. [QAIRT/QNN公式documentation catalog](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-4/developing-apps-qualcomm-neural-processing-sdk.html?product=1601111740010412)
+   と、インストールされた同一versionのsample/build fileを照合します。
+
+Qualcomm OneID、規約同意、製品/SoCごとのentitlementが必要になる場合があります。この環境には
+認証済みsessionもSDK archiveもないため、取得操作は自動化していません。
+
+### SDK inventory script
+
+PowerShell:
+
+```powershell
+.\scripts\check_qairt.ps1 -SdkRoot C:\path\to\qairt
+```
+
+macOS/Linux/WSL:
+
+```sh
+sh ./scripts/check_qairt.sh --sdk-root /path/to/qairt
+```
+
+path引数を省略した場合は、`QAIRT_SDK_ROOT`、`qairt.sdkRoot`、一般的な候補の順に探します。
+scriptはSDK内を列挙して、固定basenameを仮定せず実際に見つかったpathを出力します。
+
+- `QnnInterface.h` / `QnnTypes.h`
+- header macroから判定できたQNN API version evidence
+- ELF machineとpathで確認したAndroid arm64 `.so` directory
+- 実ファイル名から抽出したCPU backend、HTP backend、HTP prepare相当候補
+- DSP skel/stub候補
+- `qnn-net-run` / `qnn-platform-validator`
+- `QnnInterface.h`をincludeするSDK内sample候補
+
+role分類は候補です。最終的なlink/package/deploy対象は、必ず同じSDK versionの公式sample build
+fileで確定します。script成功だけでは`qnn_implementation_ready=true`になりません。
+
+SDKがない現在の出力は次です。
+
+```text
+sdk_root_exists=false
+qnn_interface_header_exists=false
+qnn_types_header_exists=false
+qnn_implementation_ready=false
+status=BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED
+```
+
+アプリでQNN modeを押した場合も、成功値を埋めず次のように終了します。
+
+```text
+QNN_EXPERIMENT_RESULT
+qnn_sdk_detected=false
+qnn_implementation_ready=false
+qnn_backend=HTP
+qnn_backend_initialized=false
+qnn_graph_finalized=false
+npu_forward_used=false
+npu_dw_used=false
+status=BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED
+error=QNN_SDK_NOT_FOUND: cannot initialize HTP
+NPU_TRAINING_RESULT
+steps_completed=0
+npu_forward_steps=0
+npu_backward_dw_steps=0
+status=BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED
+```
 
 ### 任意ビルド設定
 
@@ -475,13 +611,46 @@ Gradle propertyは次の形を予約しています。
 
 ```powershell
 .\gradlew.bat :app:assembleDebug `
-  -Pphonelm.enableQnn=true `
-  -Pqairt.sdkRoot=C:\path\to\installed\qairt
+  "-Pphonelm.enableQnn=true" `
+  "-Pqairt.sdkRoot=C:\path\to\installed\qairt"
 ```
 
-`QnnInterface.h`を検出できない状態でONにするとCMakeは明示的に失敗します。現時点の
-QNN adapterはSDK非依存stubであり、SDKを検出しても`implementation_ready=false`です。
-実ヘッダーとそのversionの公式sampleを確認するまで、QNN symbolを追加しません。
+QNN OFFでは`qnn_runtime_stub.cpp`だけを選択し、QAIRT header/libraryをcompile/link/package
+しません。2026-07-11のDebug `libphonelm_native.so`はQAIRT/QNNの`DT_NEEDED`と未解決symbolが
+ともに0件でした。QNN ONではstubを絶対に選択しません。
+
+- SDK headerがなければCMakeはSDK未導入として失敗します。
+- SDK headerが見つかっても、現在は監査済み`qnn_runtime_qairt.cpp`がないため
+  `BLOCKED_BY_QAIRT_ADAPTER_NOT_IMPLEMENTED`で失敗します。
+- 実SDK監査後は`qnn_runtime_qairt.cpp`のみをQNN ONでcompileし、公式sampleが指定する
+  include、Android arm64 library、APK同梱物を追加します。
+
+これは未実装adapterの代わりにstubをQNN-enabled APKへ混入させないための意図的なfail-fastです。
+SDK導入後はまずinventoryを取得し、その出力とSDK内sampleを確認してから上記Gradle commandを
+実行します。
+
+DSP側libraryの実ファイル名、配置先、`ADSP_LIBRARY_PATH`相当、Android 16 linker namespaceの
+正確な要件はSDKなしでは確定できません。そのため`deploy_qnn_runtime.*`はまだ追加していません。
+推測したadb copy先を用意するより、SDK sample確認後に実ファイルから生成します。
+
+### SDK検出後に記録する値
+
+`scripts/check_qairt.*`の出力とSDK sampleから、次をREADMEへ確定値として追記します。
+
+```text
+qairt_sdk_version=...
+qnn_api_version=...
+sdk_root=...
+android_arm64_include_directory=...
+android_arm64_library_directory=...
+htp_runtime_library_directory=...
+dsp_library_directory=...
+official_android_sample=...
+official_cpu_backend_sample=...
+official_htp_backend_sample=...
+```
+
+現在はこれらを空欄のままにせず、すべて`NOT_AVAILABLE`と報告します。
 
 ### SDK導入後に実装する順序
 
@@ -510,11 +679,13 @@ API名、op、shape、dtype、quantizationとともに記録します。
 | APKへMNN/native library同梱 | 達成 |
 | pure C++ CPU forward/backward/SGD | 達成 |
 | CPU gradient check | 達成 |
-| Kotlin unit test | 達成 |
+| SDK非依存量子化/shape/buffer/mock混成学習test | 達成（host） |
+| Kotlin unit test | 達成（2026-07-11再確認） |
 | 実機CPU 100 step | 未実施（端末未接続） |
 | 実機OpenCL/Vulkan | 未実施（端末未接続） |
 | GPU per-op fallback結果 | 未取得（実機が必要） |
-| QAIRT SDK検出 | 未達（SDKなし） |
+| QAIRT SDK inventory script | 達成 |
+| QAIRT SDK検出 | 未達（`BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED`） |
 | QNN CPU forward/dW | 未実装（SDKなし） |
 | QNN HTP forward/dW | 未実装（SDKなし） |
 | NPU勾配によるloss低下 | 未実装（SDKなし） |
@@ -543,12 +714,12 @@ API名、op、shape、dtype、quantizationとともに記録します。
 
 現在の優先作業はTransformerではありません。
 
-1. nubia Z80 UltraへDebug APKをinstall。
-2. MNN CPU Smallを100 step実行し、loss低下を確認。
-3. OpenCL/Vulkanを同一seedで実行し、`executed_backends`とfallback opを取得。
-4. QAIRT SDKをローカルへ導入し、version、header、公式Android sampleを提供。
-5. QNN CPU B=2/D=4 forwardを実装・比較。
-6. HTP forward、その後HTP dWへ1段ずつ進む。
+1. Qualcommの正式な配布経路からQAIRT SDKを取得・展開。
+2. `scripts/check_qairt.*`でversion、header、実library名、公式Android/CPU/HTP sampleを記録。
+3. そのversionのsampleどおりに`qnn_runtime_qairt.cpp`とCMake/package/deploy設定を実装。
+4. QNN CPUでB=2、D=4のruntime `X/W` forwardをgraph再利用し、CPU基準と比較。
+5. QNN CPU `dW`成功後だけ、同じ順序でHTP forward、HTP `dW`へ進む。
+6. HTP `dW`、CPU loss/`dP`/FP32 master weight/SGDで20 stepのloss低下を実機確認。
 
 HTPで生成したdWによるloss低下まで確認した後にのみ、Transformer 1 blockへの拡張を
 検討します。

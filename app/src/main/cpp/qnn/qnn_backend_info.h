@@ -10,7 +10,7 @@ struct BackendInfo {
     bool implementationReady = false;
     std::string sdkVersion = "NOT_AVAILABLE";
     std::string apiVersion = "NOT_AVAILABLE";
-    std::string status = "QNN_SDK_NOT_FOUND";
+    std::string status = "BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED";
     std::string sdkRoot = "NOT_SET";
 
     std::string toLogString() const;
@@ -19,4 +19,3 @@ struct BackendInfo {
 BackendInfo queryBackendInfo();
 
 }  // namespace phonelm::qnn
-

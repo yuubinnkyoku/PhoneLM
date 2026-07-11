@@ -6,15 +6,21 @@
 
 namespace phonelm::qnn {
 
+enum class QnnBackendKind {
+    CPU,
+    HTP,
+};
+
+const char* backendKindName(QnnBackendKind kind);
+
 class Runtime {
 public:
     Runtime();
     const BackendInfo& info() const;
-    bool initialize(const std::string& requestedBackend, std::string& error);
+    bool initialize(QnnBackendKind requestedBackend, std::string& error);
 
 private:
     BackendInfo info_;
 };
 
 }  // namespace phonelm::qnn
-
