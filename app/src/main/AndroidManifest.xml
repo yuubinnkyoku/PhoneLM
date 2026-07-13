@@ -19,6 +19,12 @@
         <uses-native-library
             android:name="libOpenCL.so"
             android:required="false" />
+        <!-- QNN HTP's architecture-specific transport stub has a DT_NEEDED
+             dependency on Qualcomm's vendor FastRPC client library. Declaring
+             it exposes the device-provided library to the app linker namespace. -->
+        <uses-native-library
+            android:name="libcdsprpc.so"
+            android:required="false" />
 
         <activity
             android:name=".MainActivity"

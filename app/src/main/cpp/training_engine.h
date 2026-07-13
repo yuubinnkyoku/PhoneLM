@@ -18,6 +18,7 @@ enum class ExecutionMode : int {
     QNN_HTP_FORWARD_DW = 7,
     QNN_HTP_FORWARD_DW_DX = 8,
     QNN_HTP_FULL_STEP = 9,
+    QNN_HTP_DEVICE_PROBE = 10,
 };
 
 const char* executionModeName(ExecutionMode mode);
@@ -32,4 +33,3 @@ public:
 };
 
 }  // namespace phonelm
-

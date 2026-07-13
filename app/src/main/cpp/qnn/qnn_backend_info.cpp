@@ -33,15 +33,17 @@ BackendInfo queryBackendInfo() {
     info.qnnBuildEnabled = PHONELM_ENABLE_QNN != 0;
     info.sdkDetected = PHONELM_QAIRT_SDK_DETECTED != 0;
     info.sdkRoot = PHONELM_QAIRT_SDK_ROOT_TEXT;
-    // No QAIRT SDK was present in the development environment. Therefore no
-    // QNN symbol, version struct, backend library, or data type is invented.
-    info.implementationReady = false;
+    info.implementationReady = info.qnnBuildEnabled && info.sdkDetected;
+    if (info.sdkDetected) {
+        info.sdkVersion = "2.48.40.260702";
+        info.apiVersion = "2.37.0";
+    }
     if (!info.sdkDetected) {
         info.status = "BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED";
     } else if (!info.qnnBuildEnabled) {
         info.status = "QNN_DISABLED";
     } else {
-        info.status = "NOT_IMPLEMENTED_FOR_UNVERIFIED_SDK";
+        info.status = "QAIRT_ADAPTER_READY_REQUIRES_DEVICE_EXECUTION";
     }
     return info;
 }

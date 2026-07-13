@@ -6,4 +6,5 @@
 /.cxx/
 /app/.cxx/
 /third_party/MNN/
+/diagnostics/local/
 *.iml

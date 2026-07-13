@@ -1,5 +1,42 @@
 # PhoneLM: CPU基準実装からQNN HTPへ学習演算を段階的に移すAndroid実験
 
+## nubia Z80 Ultra実機結果（2026-07-12、QAIRT 2.48.40.260702）
+
+対象はnubia NX741J、Android 16/API 36、SM8850（HTP V81）です。
+
+| 項目 | 結果 |
+|---|---|
+| Android実機CPU_REFERENCE | 達成。loss 0.00120013591 → 0.0010884183 |
+| QNN CPU forward | 達成。最大絶対誤差 9.31323e-10 |
+| QNN CPU graph再利用 | 達成。runtime W変更後に出力更新 |
+| QNN HTP forward | 未達。deviceCreateが14001を返す |
+| QNN HTP graph再利用 | 未実施（forward初期化で停止） |
+| QNN HTP dW | 未実施（forward初期化で停止） |
+| NPU生成dWによるloss低下 | 未達 |
+
+HTP backendは`libQnnHtp.so`、transportはSDKの`libQnnHtpV81Stub.so`です。
+Android linker namespaceには`libcdsprpc.so`をmanifestで公開しました。SDK公式
+`qnn-platform-validator`はHTP V81 hardwareとFastRPCライブラリを検出しましたが、SDKの
+unsigned calculator testはFastRPC `-6`（testsig/unsigned image拒否）でした。端末vendorには
+`/vendor/lib/rfsa/adsp/libQnnHtpV81Skel.so`があります。signed-PD、default config、明示SoCの
+各device configを検証後も、現在の失敗APIは`deviceCreate`、QNN error codeは14001
+（`QNN_DEVICE_ERROR_INVALID_CONFIG`）です。CPU backendへのfallbackは行っていません。
+
+device専用probeではproviderは1件で、core API 2.37.0、HTP backend API 5.48.0でした。
+`library_load`、provider選択、`logCreate`、`backendCreate`は成功しています。QAIRT generic
+SampleAppと同じ`deviceCreate(logHandle, nullptr, &deviceHandle)`で14001となり、
+`contextCreate`、graph、HTP演算には到達していません。公式SampleAppはSDK同梱Android.mkで
+ビルドできましたが、SDK examplesには実行に必要なmodel.so/DLCとinput listの組がなく、
+架空のモデルは作成していません。詳細は`docs/qairt-2.48.40-device-create-analysis.md`です。
+
+実機テストは次で再現できます。
+
+```powershell
+.\scripts\run_qnn_device_tests.ps1 `
+  -SdkRoot "$env:QAIRT_SDK_ROOT" `
+  -DeviceSerial "<nubia serial>"
+```
+
 Androidアプリ内の数値的に正しいCPU線形回帰を基準に、QAIRTのQNN C/C++ APIを直接使って
 `P = XW`、続いて`dW = transpose(X)dP`をQNN CPU、QNN HTPへ1演算ずつ移す実験です。
 最初のNPU成功条件は、HTPが生成した`dW`をCPUのFP32 master weightへ適用し、複数stepで

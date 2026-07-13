@@ -2,6 +2,8 @@ package com.yuubinnkyoku.phonelm
 
 import android.app.Activity
 import android.os.Bundle
+import android.content.pm.ApplicationInfo
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ArrayAdapter
@@ -91,6 +93,16 @@ class MainActivity : Activity() {
 
         applyPreset(BenchmarkConfig.small())
         viewModel.loadEnvironment()
+        runDebugIntentIfRequested()
+    }
+
+    private fun runDebugIntentIfRequested() {
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        val requested = intent.getStringExtra("phonelm.mode") ?: return
+        val mode = runCatching { ExecutionMode.valueOf(requested) }.getOrNull() ?: return
+        applyPreset(BenchmarkConfig(Backend.CPU, 2, 4, 20, 0, 0.1f, 20_260_710L))
+        Log.i("PhoneLMDeviceTest", "DEVICE_TEST_START mode=$requested")
+        startMode(mode)
     }
 
     private fun applyPreset(config: BenchmarkConfig) {
@@ -164,6 +176,14 @@ class MainActivity : Activity() {
         qnnStatusText.text = state.qnnStatus
         resultText.text = state.output
         resultScrollView.post { resultScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+        if (!state.running && state.lastResult != null &&
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        ) {
+            openFileOutput("device-test-result.txt", MODE_PRIVATE).bufferedWriter().use {
+                it.write(state.output)
+            }
+            Log.i("PhoneLMDeviceTest", "DEVICE_TEST_DONE\n${state.output}")
+        }
     }
 
     private fun toast(message: String) {

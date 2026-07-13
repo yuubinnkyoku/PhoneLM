@@ -72,6 +72,7 @@ const char* executionModeName(ExecutionMode mode) {
         case ExecutionMode::QNN_HTP_FORWARD_DW: return "QNN_HTP_FORWARD_DW";
         case ExecutionMode::QNN_HTP_FORWARD_DW_DX: return "QNN_HTP_FORWARD_DW_DX";
         case ExecutionMode::QNN_HTP_FULL_STEP: return "QNN_HTP_FULL_STEP";
+        case ExecutionMode::QNN_HTP_DEVICE_PROBE: return "QNN_HTP_DEVICE_PROBE";
         default: return "UNKNOWN";
     }
 }
@@ -104,6 +105,7 @@ std::string TrainingEngine::run(ExecutionMode mode,
         case ExecutionMode::QNN_HTP_FORWARD_DW:
         case ExecutionMode::QNN_HTP_FORWARD_DW_DX:
         case ExecutionMode::QNN_HTP_FULL_STEP:
+        case ExecutionMode::QNN_HTP_DEVICE_PROBE:
             return qnn::runLinearExperiment(mode, config, log);
         default: {
             const std::string report =
@@ -119,4 +121,3 @@ std::string TrainingEngine::capabilityReport() {
 }
 
 }  // namespace phonelm
-

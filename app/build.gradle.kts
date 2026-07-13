@@ -5,6 +5,14 @@ plugins {
 
 val phoneLmEnableQnn = providers.gradleProperty("phonelm.enableQnn").orElse("false")
 val qairtSdkRoot = providers.gradleProperty("qairt.sdkRoot").orElse("")
+val qnnJniDir = layout.buildDirectory.dir("generated/qnnJni/arm64-v8a")
+val stageQnnJni by tasks.registering(Sync::class) {
+    onlyIf { phoneLmEnableQnn.get().toBoolean() }
+    from(provider { file("${qairtSdkRoot.get()}/lib/aarch64-android") }) {
+        include("libQnnCpu.so", "libQnnHtp.so", "libQnnHtpPrepare.so", "libQnnHtpV81Stub.so")
+    }
+    into(qnnJniDir)
+}
 
 android {
     namespace = "com.yuubinnkyoku.phonelm"
@@ -79,7 +87,18 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    // SDK binaries remain outside Git. A QNN-enabled local build packages the
+    // installed SDK's Android libraries so dlopen can resolve the selected
+    // backend and the device-specific HTP transport at runtime.
+    if (phoneLmEnableQnn.get().toBoolean()) {
+        require(qairtSdkRoot.get().isNotBlank()) { "qairt.sdkRoot is required when QNN is enabled" }
+        sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/qnnJni"))
+    }
 }
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }
+    .configureEach { dependsOn(stageQnnJni) }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")

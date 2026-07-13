@@ -74,9 +74,11 @@ function Get-VersionTriplets($HeaderFiles, [string]$PrefixPattern) {
         foreach ($line in Get-Content -LiteralPath $file.FullName -ErrorAction SilentlyContinue) {
             if ($line -match '^\s*#\s*define\s+([A-Za-z0-9_]*VERSION)_(MAJOR|MINOR|PATCH)\s+\(?([0-9]+)') {
                 $prefix = $Matches[1]
+                $part = $Matches[2]
+                $value = $Matches[3]
                 if ($prefix -notmatch $PrefixPattern) { continue }
                 if (-not $macros.ContainsKey($prefix)) { $macros[$prefix] = @{} }
-                $macros[$prefix][$Matches[2]] = $Matches[3]
+                $macros[$prefix][$part] = $value
             }
         }
     }

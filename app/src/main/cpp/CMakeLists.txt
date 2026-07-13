@@ -130,6 +130,9 @@ target_include_directories(phonelm_native PRIVATE
     "${MNN_ROOT}/tools/train/source/grad"
     "${MNN_ROOT}/tools/train/source/optimizer"
 )
+if(PHONELM_ENABLE_QNN)
+    target_include_directories(phonelm_native PRIVATE "${QAIRT_SDK_ROOT}/include/QNN")
+endif()
 
 target_compile_options(phonelm_native PRIVATE
     -Wall
