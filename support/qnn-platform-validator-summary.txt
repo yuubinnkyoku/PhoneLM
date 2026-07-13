@@ -1,0 +1,15 @@
+tool=qnn-platform-validator
+qairt_version=2.48.40.260702151143
+backend=DSP/HTP
+backend_hardware=Supported
+backend_libraries=Found
+fastrpc_libraries=libadsprpc.so,libcdsprpc.so
+backend_library_version=Not Found
+core_version=Hexagon Architecture V81
+calculator_test=Failed
+calculator_fastrpc_error=-6
+overall_result=QNN is NOT supported for backend DSP on the device
+
+This is a summary, not the full validator log. The validator's unsigned
+calculator message suggested testsig/unsigned-image prerequisites; neither
+testsig nor root access was used.

@@ -1,0 +1,11 @@
+device_manufacturer=nubia
+device_model=NX741J
+device_code=PQ85A01
+android_version=16
+android_api_level=36
+security_patch_level=2026-05-01
+soc_model=SM8850
+htp_architecture=V81
+
+Removed: ADB serial, network address, port, account identifiers, and other
+device-unique identifiers.

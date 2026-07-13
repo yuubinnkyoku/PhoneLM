@@ -1,0 +1,27 @@
+reproduction=standalone_qnn_htp_device_create
+process_domain=shell
+selinux_enforcing=true
+qairt_version=2.48.40.260702151143
+backend_library_load_result=success
+provider_count=1
+core_api_version=2.37.0
+backend_api_version=5.48.0
+log_create_result_decimal=0
+backend_create_result_decimal=0
+device_config=null
+device_create_result_decimal=14001
+device_create_result_hex=0x36b1
+device_handle_null=true
+context_create_called=false
+qnn_open_result=0x80000600
+fastrpc_get_handle_result=0x0000000f
+transport_skel_error=1002
+htp_prepare_loaded=false
+probe_process_exit_code=8
+
+The process exit code is defined by this reproduction program. The QNN error is
+the separately reported device_create_result_decimal value.
+
+The confirmed one-shot run initially staged HTP Prepare following the official
+NetRun file set. The backend trace explicitly reported that Prepare was not
+loaded. The public runner therefore omits that unused library.
