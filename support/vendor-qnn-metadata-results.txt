@@ -1,0 +1,31 @@
+Vendor QNN metadata investigation (anonymized excerpt)
+
+Firmware vendor host, obtained from an existing camera-process stack in one normal Android bugreport:
+path=/vendor/lib64/libQnnHtp.so
+gnu_build_id=8b8abf9f1bb2483d
+core_api_version=unavailable
+backend_api_version=unavailable
+version_string=unavailable
+
+Normal shell access to the vendor host, Prepare, V81 host/stub, System, and signed V81 skel:
+file_read=permission_denied
+adb_pull=permission_denied
+absolute_path_dlopen=failed_library_not_found
+private_namespace_workaround_used=false
+
+Separate QNN stack found in the system QualcommVoiceActivation APK:
+architecture=HTP V79 (not the firmware V81 stack)
+host_build_id=65947c2dac48b080
+host_soname=libQnnHtp.so
+runtime_core_api_version=2.19.0
+runtime_backend_api_version=5.26.0
+system_build_id=f2f47b481a801a8b
+v79_stub_build_id=5011f3bc62daaca0
+
+QAIRT 2.48.40 comparison:
+host_build_id=ac88579cae9476c2
+v81_stub_build_id=afb3e455d95bdf97
+core_api_version=2.37.0
+backend_api_version=5.48.0
+
+No vendor binary, APK, APEX, firmware, full bugreport, or raw log is included.

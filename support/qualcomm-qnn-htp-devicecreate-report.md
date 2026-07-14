@@ -20,6 +20,7 @@ The standalone reproduction contains no PhoneLM code, MNN, model, tensor, graph,
 | QNN core API | 2.37.0 |
 | HTP backend API | 5.48.0 |
 | Process domains tested | `shell`, `untrusted_app` |
+| Firmware build | `MyOS16.0.28_NX741J_NEEA` |
 
 ADB serials, network addresses, local usernames, local installation paths, and device-unique identifiers have been removed.
 
@@ -80,6 +81,28 @@ The confirmed one-shot run staged HTP Prepare following the official NetRun file
 Directly measured: three independent NULL-config call paths return the same 14001, including a standalone shell executable. This excludes PhoneLM graph/tensor/MatMul code and custom device-config construction as prerequisites for this failure.
 
 Inference only: the evidence is consistent with an incompatibility or unsupported access path between the public QAIRT 2.48.40 host/backend/stub and the vendor-supplied signed HTP V81 stack. The precise compatibility contract and required vendor integration are not known because the vendor QNN host/stub/skel binaries are not readable by the shell. This report does not claim a confirmed version mismatch.
+
+## Firmware metadata investigation
+
+A normal Android bugreport exposed an existing vendor camera-process stack using
+`/vendor/lib64/libQnnHtp.so` with GNU Build ID `8b8abf9f1bb2483d`. This differs from the QAIRT
+2.48.40 host Build ID `ac88579cae9476c2`, proving they are different builds but not proving API
+incompatibility. The vendor Core API, Backend API, version string, V81 stub Build ID, and signed V81
+skel Build ID/interface version were not exposed.
+
+Ordinary shell reads and pulls of the vendor QNN files were denied. Normal absolute-path `dlopen`
+also failed because the QNN libraries are not visible in the shell namespace. Android's vendor
+public-library list exposes `libadsprpc.so`, `libcdsprpc.so`, and `libsdsprpc.so`, but not
+`libQnnHtp.so` or `libQnnSystem.so`.
+
+One separate V79 QNN stack was found inside the system QualcommVoiceActivation APK. Runtime provider
+enumeration reported Core 2.19.0 and HTP Backend 5.26.0, with host Build ID
+`65947c2dac48b080` and V79 stub Build ID `5011f3bc62daaca0`. Qualcomm's API histories associate this
+API pair with QNN SDK 2.26.0. Because it is V79 and has a different host Build ID, it is not treated
+as the NX741J vendor V81 stack or as a supported replacement.
+
+No exact matching full OTA/factory package was available from nubia's public official download
+pages, so the vendor image could not be examined offline.
 
 ## Questions
 

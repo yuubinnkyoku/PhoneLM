@@ -1,0 +1,18 @@
+collection_source=normal adb shell getprop
+manufacturer=nubia
+model=NX741J
+device=PQ85A01
+system_build_fingerprint=nubia/PQ85A01-UN/PQ85A01:16/BQ2A.250705.001-BP2A.250605.031.A3/20260605.090729:user/release-keys
+vendor_build_fingerprint=nubia/PQ85A01-UN/PQ85A01:16/BQ2A.250705.001-BP2A.250605.031.A3/20260605.093157:user/release-keys
+display_id=MyOS16.0.28_NX741J_NEEA
+system_incremental=20260605.090729
+vendor_incremental=20260605.093157
+android_release=16
+android_api=36
+security_patch=2026-05-01
+board_platform=canoe
+soc_model=SM8850
+first_api_level=36
+vendor_api_level=202504
+
+ADB endpoints, the vbmeta digest, account data, and other device-specific identifiers are omitted.

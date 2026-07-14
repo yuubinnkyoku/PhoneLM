@@ -14,6 +14,16 @@
 | `support/qnn_htp_device_create_repro/main.cpp` | PhoneLM-independent NULL-config QNN HTP device creation probe |
 | `support/qnn_htp_device_create_repro/run.ps1` | Build/deploy/run script with SDK root and current ADB serial supplied as local arguments |
 | `support/qnn_htp_device_create_repro/result-public.txt` | Anonymized, minimal excerpt from the confirmed one-shot execution |
+| `support/vendor_qnn_metadata_probe/README.md` | Scope and instructions for the metadata-only normal-dlopen probe |
+| `support/vendor_qnn_metadata_probe/CMakeLists.txt` | Android AArch64 metadata-probe build definition |
+| `support/vendor_qnn_metadata_probe/main.cpp` | Build-ID/SONAME/provider metadata probe; no QNN initialization calls |
+| `support/vendor_qnn_metadata_probe/run.ps1` | Parameterized build/deploy/run script |
+| `support/device-build-properties-anonymized.txt` | Installed firmware identity with endpoint and unique values removed |
+| `support/vendor-qnn-metadata-results.txt` | Anonymized vendor/APK/SDK metadata comparison |
+| `support/bugreport-qnn-summary.txt` | Anonymized QNN-only findings; not the full bugreport |
+| `diagnostics/android-linker-qnn-analysis.md` | Public native-library and linker namespace analysis |
+| `diagnostics/vendor-qnn-version-investigation.md` | Evidence-source-separated vendor version investigation |
+| `diagnostics/official-firmware-vendor-qnn-analysis.md` | Official-only firmware availability investigation |
 
 ## Deliberately excluded
 

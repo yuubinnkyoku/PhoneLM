@@ -17,7 +17,17 @@ $relativeFiles = @(
     "support/qnn_htp_device_create_repro/CMakeLists.txt",
     "support/qnn_htp_device_create_repro/main.cpp",
     "support/qnn_htp_device_create_repro/run.ps1",
-    "support/qnn_htp_device_create_repro/result-public.txt"
+    "support/qnn_htp_device_create_repro/result-public.txt",
+    "support/vendor_qnn_metadata_probe/README.md",
+    "support/vendor_qnn_metadata_probe/CMakeLists.txt",
+    "support/vendor_qnn_metadata_probe/main.cpp",
+    "support/vendor_qnn_metadata_probe/run.ps1",
+    "support/device-build-properties-anonymized.txt",
+    "support/vendor-qnn-metadata-results.txt",
+    "support/bugreport-qnn-summary.txt",
+    "diagnostics/android-linker-qnn-analysis.md",
+    "diagnostics/vendor-qnn-version-investigation.md",
+    "diagnostics/official-firmware-vendor-qnn-analysis.md"
 )
 
 $disallowedEntryExtensions = @(".apk", ".so", ".dll", ".exe", ".raw", ".bin")

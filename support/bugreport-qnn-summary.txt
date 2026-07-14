@@ -1,0 +1,19 @@
+source=one normal Android bugreport; anonymized summary only
+
+Confirmed module metadata:
+/vendor/lib64/libQnnHtp.so Build ID 8b8abf9f1bb2483d
+
+The Build ID appeared in a stack dump for an existing vendor camera process. The same stack showed
+/vendor/lib64/libcdsprpc.so Build ID e7a4561f3a9c325ef43ff3ddd714cdb5.
+
+Not present in searchable bugreport text:
+- QNN/QAIRT release string for the vendor host
+- vendor QNN Core API or HTP Backend API version
+- libQnnHtpV81Stub.so Build ID/version
+- libQnnHtpV81Skel.so Build ID/interface version
+
+Kernel logs contained repeated generic CDSP FastRPC wait-for-signal failures with -512. They were
+not correlated to the one-shot QNN probe and are not treated as the cause of deviceCreate=14001.
+
+The full bugreport is excluded because it may contain device identifiers, accounts, network data,
+and unrelated personal information.

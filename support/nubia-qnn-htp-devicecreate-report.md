@@ -16,6 +16,12 @@ Qualcomm's `qnn-net-run` also reports `Device Creation failure` and exits with c
 
 Environment: NX741J / PQ85A01, Android 16, SM8850, HTP V81, QAIRT 2.48.40.260702151143, QNN core API 2.37.0, HTP backend API 5.48.0.
 
+The installed firmware is `MyOS16.0.28_NX741J_NEEA`. A normal diagnostic report shows that nubia's
+vendor camera stack loads `/vendor/lib64/libQnnHtp.so` with Build ID `8b8abf9f1bb2483d`, while the
+public QAIRT 2.48.40 library has a different Build ID. Android does not publish the vendor QNN host
+library to ordinary third-party native-library namespaces. The vendor QNN API version and signed
+V81 DSP-library interface version are not visible without firmware-team information.
+
 Could you please help with these questions?
 
 1. Is third-party use of the Hexagon HTP through Qualcomm QNN supported on the NX741J global firmware?
