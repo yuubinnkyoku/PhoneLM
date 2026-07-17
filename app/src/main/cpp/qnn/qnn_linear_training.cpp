@@ -93,7 +93,8 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
         const bool accurate=forwardError.maximum <= 1.0e-5f;
         std::ostringstream s; s << "QNN_EXPERIMENT_RESULT\nexecution_mode=" << executionModeName(mode)
           << "\nqnn_backend=" << backend << "\nbackend_library=libQnn" << (htp?"Htp.so":"Cpu.so")
-          << "\nprovider_version=2.37\nqnn_api_version=2.37.0\nqnn_backend_initialized=true"
+          << "\nqnn_sdk_version=" << forward.info().sdkVersion
+          << "\nqnn_api_version=" << forward.info().apiVersion << "\nqnn_backend_initialized=true"
           << "\nqnn_graph_finalized=true\ngraph_reused=true\nruntime_weight_update_worked=" << (outputChanged?"true":"false")
           << "\ntensor_dtype=FLOAT_32\ntensor_memory_type=RAW\nquantization=NONE"
           << "\nforward_max_absolute_error=" << forwardError.maximum
@@ -127,7 +128,8 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
     const bool accurate=forwardError.maximum<=1e-5f && (!htpDw || dwError.maximum<=1e-5f);
     const bool ok=completed==steps && finalLoss<initialLoss && changed && accurate;
     std::ostringstream s; s<<"QNN_EXPERIMENT_RESULT\nexecution_mode="<<executionModeName(mode)
-      <<"\nqnn_backend="<<backend<<"\nbackend_library=libQnnHtp.so\nprovider_version=2.37\nqnn_api_version=2.37.0"
+      <<"\nqnn_backend="<<backend<<"\nbackend_library=libQnnHtp.so\nqnn_sdk_version="<<forward.info().sdkVersion
+      <<"\nqnn_api_version="<<forward.info().apiVersion
       <<"\nqnn_backend_initialized=true\nqnn_graph_finalized=true\ngraph_reused=true\nruntime_weight_update_worked=true"
       <<"\ntensor_dtype=FLOAT_32\ntensor_memory_type=RAW\nquantization=NONE\nnpu_forward_used=true\nnpu_dw_used="<<(htpDw?"true":"false")
       <<"\nforward_max_absolute_error="<<forwardError.maximum<<"\nforward_mean_absolute_error="<<forwardError.sum/forwardError.count

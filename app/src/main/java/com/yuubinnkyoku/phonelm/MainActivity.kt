@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.content.pm.ApplicationInfo
 import android.util.Log
+import android.system.Os
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ArrayAdapter
@@ -12,6 +13,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import java.util.Locale
+import java.io.File
 
 class MainActivity : Activity() {
     private lateinit var viewModel: BenchmarkViewModel
@@ -35,6 +37,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        prepareQnnDspLibrary()
 
         batchSizeInput = findViewById(R.id.batchSizeInput)
         dimensionInput = findViewById(R.id.dimensionInput)
@@ -94,6 +97,22 @@ class MainActivity : Activity() {
         applyPreset(BenchmarkConfig.small())
         viewModel.loadEnvironment()
         runDebugIntentIfRequested()
+    }
+
+    private fun prepareQnnDspLibrary() {
+        val assetName = "qnn/libQnnHtpV81Skel.so"
+        if (assets.list("qnn")?.contains("libQnnHtpV81Skel.so") != true) return
+        val dspDir = File(filesDir, "qnn-dsp").apply { mkdirs() }
+        val target = File(dspDir, "libQnnHtpV81Skel.so")
+        assets.open(assetName).use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+        Os.setenv(
+            "ADSP_LIBRARY_PATH",
+            "${dspDir.absolutePath};/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/system/lib/rfsa/adsp",
+            true,
+        )
+        Log.i("PhoneLMQnn", "Configured process-local DSP library path")
     }
 
     private fun runDebugIntentIfRequested() {

@@ -54,7 +54,9 @@ bool Runtime::initialize(QnnBackendKind kind, std::string& error) {
       << "loaded_backend_library=" << library << '\n'
       << "header_qnn_api_version=" << QNN_API_VERSION_MAJOR << '.' << QNN_API_VERSION_MINOR << '.' << QNN_API_VERSION_PATCH << '\n';
     if (kind == QnnBackendKind::HTP) {
-        setenv("ADSP_LIBRARY_PATH", "/vendor/lib/rfsa/adsp", 1);
+        if (std::getenv("ADSP_LIBRARY_PATH") == nullptr) {
+            setenv("ADSP_LIBRARY_PATH", "/vendor/lib/rfsa/adsp", 1);
+        }
         impl_->transportLibrary = dlopen("libQnnHtpV81Stub.so", RTLD_NOW | RTLD_GLOBAL);
         if (!impl_->transportLibrary) {
             error = std::string("library_load: dlopen(libQnnHtpV81Stub.so): ") + dlerror();

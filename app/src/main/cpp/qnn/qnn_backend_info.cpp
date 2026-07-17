@@ -13,6 +13,10 @@
 #ifndef PHONELM_QAIRT_SDK_ROOT_TEXT
 #define PHONELM_QAIRT_SDK_ROOT_TEXT "NOT_SET"
 #endif
+#if PHONELM_ENABLE_QNN
+#include <QnnCommon.h>
+#include <QnnSdkBuildId.h>
+#endif
 
 namespace phonelm::qnn {
 
@@ -34,10 +38,14 @@ BackendInfo queryBackendInfo() {
     info.sdkDetected = PHONELM_QAIRT_SDK_DETECTED != 0;
     info.sdkRoot = PHONELM_QAIRT_SDK_ROOT_TEXT;
     info.implementationReady = info.qnnBuildEnabled && info.sdkDetected;
-    if (info.sdkDetected) {
-        info.sdkVersion = "2.48.40.260702";
-        info.apiVersion = "2.37.0";
+#if PHONELM_ENABLE_QNN
+    if (info.sdkDetected && info.qnnBuildEnabled) {
+        info.sdkVersion = std::string(QNN_SDK_BUILD_ID).substr(QNN_SDK_BUILD_ID[0] == 'v' ? 1 : 0);
+        info.apiVersion = std::to_string(QNN_API_VERSION_MAJOR) + "." +
+                          std::to_string(QNN_API_VERSION_MINOR) + "." +
+                          std::to_string(QNN_API_VERSION_PATCH);
     }
+#endif
     if (!info.sdkDetected) {
         info.status = "BLOCKED_BY_QAIRT_SDK_NOT_INSTALLED";
     } else if (!info.qnnBuildEnabled) {

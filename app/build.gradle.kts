@@ -5,11 +5,39 @@ plugins {
 
 val phoneLmEnableQnn = providers.gradleProperty("phonelm.enableQnn").orElse("false")
 val qairtSdkRoot = providers.gradleProperty("qairt.sdkRoot").orElse("")
+fun qairtBuildId(): String {
+    val root = file(qairtSdkRoot.get())
+    val yaml = root.resolve("sdk.yaml").readText()
+    val header = root.resolve("include/QNN/QnnSdkBuildId.h").readText()
+    val version = Regex("(?m)^version:\\s*(\\S+)").find(yaml)!!.groupValues[1]
+    val build = Regex("(?m)^build_id:\\s*(\\S+)").find(yaml)!!.groupValues[1]
+    val headerId = Regex("QNN_SDK_BUILD_ID\\s+\"v([^\"]+)\"").find(header)!!.groupValues[1]
+    val expected = "$version.$build"
+    require(headerId == expected) { "Mixed QAIRT distribution: sdk.yaml=$expected, header=$headerId" }
+    listOf("libQnnSystem.so", "libQnnCpu.so", "libQnnHtp.so", "libQnnHtpPrepare.so",
+        "libQnnHtpV81Stub.so").forEach {
+        require(root.resolve("lib/aarch64-android/$it").isFile) { "Incomplete QAIRT distribution: $it" }
+    }
+    require(root.resolve("lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so").isFile) {
+        "Incomplete QAIRT distribution: libQnnHtpV81Skel.so"
+    }
+    logger.lifecycle("PhoneLM QAIRT SDK: ${root.absolutePath} ($expected)")
+    return expected
+}
+val selectedQairtBuildId = if (phoneLmEnableQnn.get().toBoolean()) qairtBuildId() else "DISABLED"
 val qnnJniDir = layout.buildDirectory.dir("generated/qnnJni/arm64-v8a")
+val qnnDspAssetDir = layout.buildDirectory.dir("generated/qnnDspAssets/qnn")
+val stageQnnDspAsset by tasks.registering(Sync::class) {
+    onlyIf { phoneLmEnableQnn.get().toBoolean() }
+    from(provider { file("${qairtSdkRoot.get()}/lib/hexagon-v81/unsigned") }) {
+        include("libQnnHtpV81Skel.so")
+    }
+    into(qnnDspAssetDir)
+}
 val stageQnnJni by tasks.registering(Sync::class) {
     onlyIf { phoneLmEnableQnn.get().toBoolean() }
     from(provider { file("${qairtSdkRoot.get()}/lib/aarch64-android") }) {
-        include("libQnnCpu.so", "libQnnHtp.so", "libQnnHtpPrepare.so", "libQnnHtpV81Stub.so")
+        include("libQnnSystem.so", "libQnnCpu.so", "libQnnHtp.so", "libQnnHtpPrepare.so", "libQnnHtpV81Stub.so")
     }
     into(qnnJniDir)
 }
@@ -17,9 +45,8 @@ val stageQnnJni by tasks.registering(Sync::class) {
 android {
     namespace = "com.yuubinnkyoku.phonelm"
     compileSdk = 35
-    // The local r26d package is incomplete (its build/cmake toolchain is
-    // missing). r27 is installed in full and is pinned for reproducibility.
-    ndkVersion = "27.0.12077973"
+    // Match the Android NDK declared by the selected QAIRT distribution.
+    ndkVersion = "26.2.11394342"
 
     defaultConfig {
         applicationId = "com.yuubinnkyoku.phonelm"
@@ -41,6 +68,7 @@ android {
                     "-DANDROID_STL=c++_shared",
                     "-DPHONELM_ENABLE_QNN=${phoneLmEnableQnn.get()}",
                     "-DQAIRT_SDK_ROOT=${qairtSdkRoot.get()}",
+                    "-DPHONELM_EXPECTED_QAIRT_BUILD_ID=$selectedQairtBuildId",
                 )
                 targets += listOf("phonelm_native")
             }
@@ -94,11 +122,14 @@ android {
     if (phoneLmEnableQnn.get().toBoolean()) {
         require(qairtSdkRoot.get().isNotBlank()) { "qairt.sdkRoot is required when QNN is enabled" }
         sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/qnnJni"))
+        sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/qnnDspAssets"))
     }
 }
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }
     .configureEach { dependsOn(stageQnnJni) }
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
+    .configureEach { dependsOn(stageQnnDspAsset) }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")

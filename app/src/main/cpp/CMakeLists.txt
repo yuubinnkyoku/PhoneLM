@@ -12,6 +12,7 @@ set(MNN_ROOT "${PHONELM_ROOT}/third_party/MNN")
 
 option(PHONELM_ENABLE_QNN "Compile the SDK-specific QAIRT/QNN adapter" OFF)
 set(QAIRT_SDK_ROOT "" CACHE PATH "Root of a locally installed QAIRT SDK")
+set(PHONELM_EXPECTED_QAIRT_BUILD_ID "" CACHE STRING "Expected QAIRT build id")
 if(QAIRT_SDK_ROOT STREQUAL "" AND DEFINED ENV{QAIRT_SDK_ROOT})
     file(TO_CMAKE_PATH "$ENV{QAIRT_SDK_ROOT}" QAIRT_SDK_ROOT)
 endif()
@@ -38,6 +39,15 @@ if(PHONELM_ENABLE_QNN AND NOT PHONELM_QAIRT_SDK_DETECTED)
         "QAIRT_SDK_ROOT='${QAIRT_SDK_ROOT}'. The MNN-only build works with QNN OFF.")
 endif()
 
+if(PHONELM_ENABLE_QNN)
+    file(READ "${QAIRT_SDK_ROOT}/include/QNN/QnnSdkBuildId.h" _qairt_build_header)
+    string(REGEX MATCH "QNN_SDK_BUILD_ID[ \t]+\"v([^\"]+)\"" _ "${_qairt_build_header}")
+    if(NOT PHONELM_EXPECTED_QAIRT_BUILD_ID STREQUAL "" AND
+       NOT CMAKE_MATCH_1 STREQUAL PHONELM_EXPECTED_QAIRT_BUILD_ID)
+        message(FATAL_ERROR "Mixed QAIRT distribution: expected=${PHONELM_EXPECTED_QAIRT_BUILD_ID}, headers=${CMAKE_MATCH_1}")
+    endif()
+    message(STATUS "PhoneLM QAIRT SDK: ${QAIRT_SDK_ROOT} (${CMAKE_MATCH_1})")
+endif()
 # QNN OFF must never compile or link a QAIRT-bound source. Conversely, QNN ON
 # must never fall back to the stub: it selects the audited adapter only. The
 # adapter is intentionally absent until a locally installed SDK can be read.
