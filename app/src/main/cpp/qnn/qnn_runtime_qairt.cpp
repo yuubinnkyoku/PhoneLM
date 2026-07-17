@@ -2,6 +2,7 @@
 
 #include <QnnInterface.h>
 #include <QnnOpDef.h>
+#include <QnnSdkBuildId.h>
 #include <HTP/QnnHtpDevice.h>
 #include <dlfcn.h>
 #include <android/log.h>
@@ -51,11 +52,27 @@ bool Runtime::initialize(QnnBackendKind kind, std::string& error) {
     std::ostringstream d;
     const char* library = kind == QnnBackendKind::CPU ? "libQnnCpu.so" : "libQnnHtp.so";
     d << "requested_backend=" << backendKindName(kind) << '\n'
-      << "loaded_backend_library=" << library << '\n'
-      << "header_qnn_api_version=" << QNN_API_VERSION_MAJOR << '.' << QNN_API_VERSION_MINOR << '.' << QNN_API_VERSION_PATCH << '\n';
+      << "backend_library=" << library << '\n'
+      << "compile_time_sdk_build_id="
+      << (QNN_SDK_BUILD_ID[0] == 'v' ? &QNN_SDK_BUILD_ID[1] : QNN_SDK_BUILD_ID) << '\n'
+      << "compile_time_qnn_api_version=" << QNN_API_VERSION_MAJOR << '.'
+      << QNN_API_VERSION_MINOR << '.' << QNN_API_VERSION_PATCH << '\n'
+      << "cpu_fallback=false\n";
+    if (kind == QnnBackendKind::HTP) {
+        const char* skelDir = std::getenv("PHONELM_QNN_SKEL_DIR");
+        const char* expectedHash = std::getenv("PHONELM_QNN_SKEL_EXPECTED_SHA256");
+        const char* actualHash = std::getenv("PHONELM_QNN_SKEL_ACTUAL_SHA256");
+        const char* skelAction = std::getenv("PHONELM_QNN_SKEL_ACTION");
+        const char* adspPath = std::getenv("ADSP_LIBRARY_PATH");
+        d << "qnn_skel_dir=" << (skelDir ? skelDir : "UNAVAILABLE") << '\n'
+          << "qnn_skel_expected_sha256=" << (expectedHash ? expectedHash : "UNAVAILABLE") << '\n'
+          << "qnn_skel_actual_sha256=" << (actualHash ? actualHash : "UNAVAILABLE") << '\n'
+          << "qnn_skel_action=" << (skelAction ? skelAction : "UNAVAILABLE") << '\n'
+          << "adsp_library_path=" << (adspPath ? adspPath : "UNAVAILABLE") << '\n';
+    }
     if (kind == QnnBackendKind::HTP) {
         if (std::getenv("ADSP_LIBRARY_PATH") == nullptr) {
-            setenv("ADSP_LIBRARY_PATH", "/vendor/lib/rfsa/adsp", 1);
+            setenv("ADSP_LIBRARY_PATH", "/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/system/lib/rfsa/adsp", 1);
         }
         impl_->transportLibrary = dlopen("libQnnHtpV81Stub.so", RTLD_NOW | RTLD_GLOBAL);
         if (!impl_->transportLibrary) {
@@ -78,10 +95,32 @@ bool Runtime::initialize(QnnBackendKind kind, std::string& error) {
         d<<"provider_"<<i<<"_core_api_version="<<c.major<<'.'<<c.minor<<'.'<<c.patch<<'\n'
          <<"provider_"<<i<<"_backend_api_version="<<b.major<<'.'<<b.minor<<'.'<<b.patch<<'\n'
          <<"provider_"<<i<<"_compatible="<<(ok?"true":"false")<<'\n';
-        if(selected<0&&ok){selected=static_cast<int>(i);impl_->api=providers[i]->QNN_INTERFACE_VER_NAME;}
+        if(selected<0&&ok){
+            selected=static_cast<int>(i);
+            impl_->api=providers[i]->QNN_INTERFACE_VER_NAME;
+            d << "provider_core_api_version=" << c.major << '.' << c.minor << '.' << c.patch << '\n'
+              << "provider_backend_api_version=" << b.major << '.' << b.minor << '.' << b.patch << '\n';
+        }
     }
     d<<"selected_provider_index="<<selected<<'\n';
     if (!impl_->api.backendCreate) { error = "provider_select: compatible provider missing"; diagnostics_=d.str()+"failed_api=provider_select\n"; return false; }
+    const char* runtimeBuildId = nullptr;
+    if (!impl_->api.backendGetBuildId ||
+        impl_->api.backendGetBuildId(&runtimeBuildId) != QNN_SUCCESS || runtimeBuildId == nullptr) {
+        error = "backend_build_id: QnnBackend_getBuildId failed";
+        diagnostics_ = d.str() + "runtime_backend_build_id=UNAVAILABLE\nfailed_api=backend_build_id\n";
+        return false;
+    }
+    d << "runtime_backend_build_id=" << runtimeBuildId << '\n';
+    const char* compileBuildId = QNN_SDK_BUILD_ID[0] == 'v' ? &QNN_SDK_BUILD_ID[1] : QNN_SDK_BUILD_ID;
+    const char* runtimeBuildIdNormalized = runtimeBuildId[0] == 'v' ? runtimeBuildId + 1 : runtimeBuildId;
+    if (std::strcmp(compileBuildId, runtimeBuildIdNormalized) != 0) {
+        error = std::string("backend_build_id: compile=") + compileBuildId +
+                ", runtime=" + runtimeBuildId;
+        diagnostics_ = d.str() + "backend_build_id_match=false\nfailed_api=backend_build_id\n";
+        return false;
+    }
+    d << "backend_build_id_match=true\n";
     auto callback = [](const char* format, QnnLog_Level_t, uint64_t, va_list arguments) {
         __android_log_vprint(ANDROID_LOG_INFO, "PhoneLMQnn", format, arguments);
     };
@@ -91,19 +130,19 @@ bool Runtime::initialize(QnnBackendKind kind, std::string& error) {
     }
     d<<"log_create_result="<<QNN_GET_ERROR_CODE(status)<<'\n';
     status = impl_->api.backendCreate(impl_->log, nullptr, &impl_->backend);
-    d<<"backend_create_result="<<QNN_GET_ERROR_CODE(status)<<'\n';
+    d<<"backend_create_result="<<QNN_GET_ERROR_CODE(status)<<"\nQnnBackend_create="<<QNN_GET_ERROR_CODE(status)<<'\n';
     if (status != QNN_SUCCESS) { error = "backend_create: backendCreate=" + std::to_string(QNN_GET_ERROR_CODE(status)); diagnostics_=d.str()+"failed_api=backend_create\n"; return false; }
     if (impl_->api.deviceCreate) {
         d<<"device_create_called=true\ndevice_create_config_variant=OFFICIAL_SAMPLE_NULL\ndevice_config_pointer_null=true\nconfig_count=0\n";
         status = impl_->api.deviceCreate(impl_->log, nullptr, &impl_->device);
-        d<<"device_create_result="<<QNN_GET_ERROR_CODE(status)<<"\ndevice_handle_null="<<(impl_->device?"false":"true")<<'\n';
-        if (status != QNN_SUCCESS && status != QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE) {
+        d<<"device_create_result="<<QNN_GET_ERROR_CODE(status)<<"\nQnnDevice_create="<<QNN_GET_ERROR_CODE(status)<<"\ndevice_handle_null="<<(impl_->device?"false":"true")<<'\n';
+        if (status != QNN_SUCCESS && (kind == QnnBackendKind::HTP || status != QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE)) {
             error = "device_create: deviceCreate=" + std::to_string(QNN_GET_ERROR_CODE(status)); diagnostics_=d.str()+"context_create_called=false\nfailed_api=device_create\n"; return false;
         }
     }
     d<<"context_create_called=true\n";
     status = impl_->api.contextCreate(impl_->backend, impl_->device, nullptr, &impl_->context);
-    d<<"context_create_result="<<QNN_GET_ERROR_CODE(status)<<"\ncontext_handle_null="<<(impl_->context?"false":"true")<<'\n';
+    d<<"context_create_result="<<QNN_GET_ERROR_CODE(status)<<"\nQnnContext_create="<<QNN_GET_ERROR_CODE(status)<<"\ncontext_handle_null="<<(impl_->context?"false":"true")<<'\n';
     if (status != QNN_SUCCESS) { error = "context_create: contextCreate=" + std::to_string(QNN_GET_ERROR_CODE(status)); diagnostics_=d.str()+"failed_api=context_create\n"; return false; }
     diagnostics_=d.str()+"failed_api=none\n";
     return true;
@@ -133,7 +172,7 @@ bool Runtime::prepareMatMul(uint32_t m, uint32_t k, uint32_t n, bool trans0, std
     op.v1.numOfParams=1; op.v1.params=&param; op.v1.numOfInputs=2; op.v1.inputTensors=impl_->inputs; op.v1.numOfOutputs=1; op.v1.outputTensors=&impl_->output;
     if((s=impl_->api.graphAddNode(impl_->graph,op))!=QNN_SUCCESS){error="graphAddNode="+std::to_string(s);return false;}
     if((s=impl_->api.graphFinalize(impl_->graph,nullptr,nullptr))!=QNN_SUCCESS){error="graphFinalize="+std::to_string(s);return false;}
-    impl_->outputElements=m*n; return true;
+    impl_->outputElements=m*n; diagnostics_ += "graph_create=success\ngraph_finalize=success\n"; return true;
 }
 
 bool Runtime::executeMatMul(const std::vector<float>& a,const std::vector<float>& b,std::vector<float>& out,std::string& error){

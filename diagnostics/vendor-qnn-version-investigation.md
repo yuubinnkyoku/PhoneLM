@@ -1,3 +1,7 @@
+> **HISTORICAL_RESULT_SUPERSEDED (2026-07-17):** The errors below describe the earlier vendor-only
+> DSP search condition. QAIRT 2.47 and 2.48 both subsequently succeeded with their matching V81
+> Stub and unsigned V81 Skel on an app-private process-local search path. They are not evidence of a
+> 2.48 regression or a device-wide HTP prohibition. See `docs/qnn-htp-qairt-2.48.md`.
 # Vendor QNN version investigation: NX741J
 
 ## Outcome

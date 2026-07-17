@@ -35,7 +35,8 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
         std::ostringstream s; s<<"QNN_HTP_DEVICE_PROBE_RESULT\nqnn_backend=HTP\n"
           <<probe.diagnostics()<<"backend_created="<<(probe.diagnostics().find("backend_create_result=0")!=std::string::npos?"true":"false")
           <<"\ndevice_created="<<(probe.diagnostics().find("device_create_result=0")!=std::string::npos?"true":"false")
-          <<"\ncontext_created="<<(initialized?"true":"false")<<"\nstatus="<<(initialized?"SUCCESS":"FAILED")
+          <<"\ncontext_created="<<(initialized?"true":"false")
+          <<"\ncpu_fallback=false\nstatus="<<(initialized?"SUCCESS":"FAILED")
           <<"\nerror="<<(initialized?"none":error);
         auto r=s.str();if(log)log(r);return r;
     }
@@ -94,13 +95,15 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
         std::ostringstream s; s << "QNN_EXPERIMENT_RESULT\nexecution_mode=" << executionModeName(mode)
           << "\nqnn_backend=" << backend << "\nbackend_library=libQnn" << (htp?"Htp.so":"Cpu.so")
           << "\nqnn_sdk_version=" << forward.info().sdkVersion
-          << "\nqnn_api_version=" << forward.info().apiVersion << "\nqnn_backend_initialized=true"
-          << "\nqnn_graph_finalized=true\ngraph_reused=true\nruntime_weight_update_worked=" << (outputChanged?"true":"false")
+          << "\nqnn_api_version=" << forward.info().apiVersion << "\n" << forward.diagnostics()
+          << "qnn_backend_initialized=true\nqnn_graph_finalized=true\ngraph_reused=true"
+          << "\ngraph_execute=success\nruntime_weight_update=success\nsecond_execute=success"
+          << "\nruntime_weight_update_worked=" << (outputChanged?"true":"false")
           << "\ntensor_dtype=FLOAT_32\ntensor_memory_type=RAW\nquantization=NONE"
           << "\nforward_max_absolute_error=" << forwardError.maximum
           << "\nforward_mean_absolute_error=" << forwardError.sum/forwardError.count
           << "\nforward_max_relative_error=" << forwardError.maxRelative
-          << "\nnpu_forward_used=" << (htp?"true":"false") << "\nnpu_forward_steps=2"
+          << "\ncpu_fallback=false\nnpu_forward_used=" << (htp?"true":"false") << "\nnpu_forward_steps=2"
           << "\nstatus=" << (accurate&&outputChanged?"SUCCESS":"FAILED")
           << "\nerror=" << (accurate&&outputChanged?"none":"accuracy or runtime weight update failed");
         auto r=s.str();if(log)log(r);return r;
@@ -129,8 +132,10 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
     const bool ok=completed==steps && finalLoss<initialLoss && changed && accurate;
     std::ostringstream s; s<<"QNN_EXPERIMENT_RESULT\nexecution_mode="<<executionModeName(mode)
       <<"\nqnn_backend="<<backend<<"\nbackend_library=libQnnHtp.so\nqnn_sdk_version="<<forward.info().sdkVersion
-      <<"\nqnn_api_version="<<forward.info().apiVersion
-      <<"\nqnn_backend_initialized=true\nqnn_graph_finalized=true\ngraph_reused=true\nruntime_weight_update_worked=true"
+      <<"\nqnn_api_version="<<forward.info().apiVersion<<"\n"<<forward.diagnostics()
+      <<"qnn_backend_initialized=true\nqnn_graph_finalized=true\ngraph_reused=true"
+      <<"\ngraph_execute=success\nruntime_weight_update=success\nsecond_execute=success"
+      <<"\nruntime_weight_update_worked=true\ncpu_fallback=false"
       <<"\ntensor_dtype=FLOAT_32\ntensor_memory_type=RAW\nquantization=NONE\nnpu_forward_used=true\nnpu_dw_used="<<(htpDw?"true":"false")
       <<"\nforward_max_absolute_error="<<forwardError.maximum<<"\nforward_mean_absolute_error="<<forwardError.sum/forwardError.count
       <<"\nforward_max_relative_error="<<forwardError.maxRelative<<"\ndw_max_absolute_error="<<(htpDw?dwError.maximum:0)

@@ -142,6 +142,9 @@ target_include_directories(phonelm_native PRIVATE
 )
 if(PHONELM_ENABLE_QNN)
     target_include_directories(phonelm_native PRIVATE "${QAIRT_SDK_ROOT}/include/QNN")
+    target_compile_options(phonelm_native PRIVATE
+        "-ffile-prefix-map=${QAIRT_SDK_ROOT}=QAIRT_SDK"
+        "-fdebug-prefix-map=${QAIRT_SDK_ROOT}=QAIRT_SDK")
 endif()
 
 target_compile_options(phonelm_native PRIVATE
@@ -153,7 +156,7 @@ target_compile_options(phonelm_native PRIVATE
 target_compile_definitions(phonelm_native PRIVATE
     PHONELM_ENABLE_QNN=$<BOOL:${PHONELM_ENABLE_QNN}>
     PHONELM_QAIRT_SDK_DETECTED=${PHONELM_QAIRT_SDK_DETECTED}
-    PHONELM_QAIRT_SDK_ROOT_TEXT="${PHONELM_QAIRT_SDK_ROOT_TEXT}"
+    PHONELM_QAIRT_SDK_ROOT_TEXT="LOCAL_SDK_SELECTED_AT_BUILD_TIME"
 )
 
 target_link_libraries(phonelm_native PRIVATE

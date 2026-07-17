@@ -1,72 +1,41 @@
 # PhoneLM: CPU基準実装からQNN HTPへ学習演算を段階的に移すAndroid実験
 
-## nubia Z80 Ultra実機結果（2026-07-12、QAIRT 2.48.40.260702）
+## nubia Z80 Ultra実機結果（2026-07-18、QAIRT 2.48.40）
 
-対象はnubia NX741J、Android 16/API 36、SM8850（HTP V81）です。
+対象はnubia NX741J、Android 16/API 36、SM8850（HTP V81）です。正式なQNN構成は
+QAIRT `2.48.40.260702151143`、QNN Core API `2.37.0`、HTP Backend API `5.48.0`です。
 
 | 項目 | 結果 |
 |---|---|
-| Android実機CPU_REFERENCE | 達成。loss 0.00120013591 → 0.0010884183 |
-| QNN CPU forward | 達成。最大絶対誤差 9.31323e-10 |
-| QNN CPU graph再利用 | 達成。runtime W変更後に出力更新 |
-| QNN HTP backendCreate | 達成 |
-| QNN HTP deviceCreate | 失敗。NULL configで14001 (`0x36b1`) |
-| QNN HTP contextCreate | 未到達 |
-| QNN HTP graphCreate | 未到達 |
-| QNN HTP operation execution | なし |
-| QNN HTP forward | 未達。deviceCreateで停止 |
-| QNN HTP graph再利用 | 未実施（forward初期化で停止） |
-| QNN HTP dW | 未実施（forward初期化で停止） |
-| NPU生成dWによるloss低下 | 未達 |
+| QNN HTP backend/device/context create | SUCCESS（すべて0） |
+| 固定FP32 MatMul compose/finalize/execute | SUCCESS |
+| graph再利用とruntime weight update後の再実行 | SUCCESS |
+| CPU fallback | false |
+| backward/optimizerのHTP実行 | 未確認。loss/gradient/updateはCPU側 |
 
-HTP backendは`libQnnHtp.so`、transportはSDKの`libQnnHtpV81Stub.so`です。
-Android linker namespaceには`libcdsprpc.so`をmanifestで公開しました。SDK公式
-`qnn-platform-validator`はHTP V81 hardwareとFastRPCライブラリを検出しましたが、SDKの
-unsigned calculator testはFastRPC `-6`（testsig/unsigned image拒否）でした。端末vendorには
-`/vendor/lib/rfsa/adsp/libQnnHtpV81Skel.so`があります。signed-PD、default config、明示SoCの
-各device configを検証後も、現在の失敗APIは`deviceCreate`、QNN error codeは14001
-（`QNN_DEVICE_ERROR_INVALID_CONFIG`）です。CPU backendへのfallbackは行っていません。
+QAIRT 2.47と2.48の両方で、対応するV81 Stubとunsigned V81 Skelを同じSDK配布物から
+揃えた場合にHTP実行へ成功しました。版固有の回帰ではありません。端末既定のDSP探索経路
+だけでは`QnnDevice_create=14001`が再現するため、PhoneLMはビルド時にローカルQAIRT SDKから
+Skelを取り込み、実行時に`files/qnn-dsp/<完全Build ID>/`へSHA-256検証付きでatomic展開します。
+その版別ディレクトリをプロセス限定`ADSP_LIBRARY_PATH`の先頭へ追加します。root、SELinux変更、
+システム領域変更は不要です。
 
-device専用probeではproviderは1件で、core API 2.37.0、HTP backend API 5.48.0でした。
-`library_load`、provider選択、`logCreate`、`backendCreate`は成功しています。QAIRT generic
-SampleAppと同じ`deviceCreate(logHandle, nullptr, &deviceHandle)`で14001となり、
-`contextCreate`、graph、HTP演算には到達していません。QAIRT公式`qnn-net-run`は同じ最小
-MatMul modelをQNN CPUで正常実行しましたが、HTPでは`Device Creation failure`、exit 11でした。
-さらにPhoneLM、MNN、model、tensor、graphを含まない独立最小再現もshell domainでNULL-config
-`deviceCreate=14001`を返しました。したがってPhoneLM固有graphは直接原因から除外され、現在は
-端末vendorのsigned HTP stackと公開QAIRT 2.48.40の互換性・サポート条件の回答待ちです。
-deviceCreateが成立していないため、FP16化や量子化を試す段階ではありません。詳細は
-`docs/qairt-2.48.40-device-create-analysis.md`と`support/qualcomm-qnn-htp-devicecreate-report.md`です。
-
-実機テストは次で再現できます。
+実機回帰試験はオンライン端末がちょうど1台のときだけ実行されます。ADB endpointはレポートへ
+保存しません。
 
 ```powershell
 .\scripts\run_qnn_device_tests.ps1 `
-  -SdkRoot "$env:QAIRT_SDK_ROOT" `
-  -DeviceSerial "<nubia serial>"
+  -QairtSdkRoot 'C:\Qualcomm\AIStack\QAIRT\2.48.40.260702' `
+  -ExpectedBuildId '2.48.40.260702151143'
 ```
 
-Androidアプリ内の数値的に正しいCPU線形回帰を基準に、QAIRTのQNN C/C++ APIを直接使って
-`P = XW`、続いて`dW = transpose(X)dP`をQNN CPU、QNN HTPへ1演算ずつ移す実験です。
-最初のNPU成功条件は、HTPが生成した`dW`をCPUのFP32 master weightへ適用し、複数stepで
-lossが低下することです。速度は成功条件ではありません。
+この試験はSDK検査、clean build、APK監査、更新インストール、probe/forward反復、force-stop、
+アプリ専用Skelコピーの破損復旧を実行し、CPU fallbackを失敗として扱います。詳細は
+`docs/qnn-htp-qairt-2.48.md`を参照してください。
 
-既存のMNN CPU・OpenCL・Vulkan経路は回帰対象として保持しますが、現在の主作業はQNNです。
-Transformer、Attention、トークナイザ、LLM全体へはまだ進みません。
-
-このREADMEは「ビルドできたこと」と「実機で成立したこと」を区別します。
-
-## 現在の結論（2026-07-14）
-
-CPU referenceとQNN CPUは成功しています。QNN HTPはbackendCreateまで成功しますが、公式
-SampleApp相当のNULL configでdeviceCreateが14001を返します。同じ結果をPhoneLM
-`untrusted_app`、公式SampleAppのshell実行、PhoneLM非依存の独立shell最小再現で直接確認しました。
-公式`qnn-net-run`もHTP device creation段階で停止します。
-
-現在のstatusは、端末vendorのsigned HTP V81 stackとQAIRT 2.48.40の互換性または第三者アプリ向け
-サポート条件についてQualcomm/nubiaの回答待ちです。未確認のversion mismatchは断定しません。
-HTP operation executionは0件であり、NPU trainingは未達です。
-
+技術的なローカル同梱と、公開APK/GitHub Releaseでの再配布は別問題です。QAIRT runtime、Stub、
+Skelの第三者再配布可否はライセンス未確認であり、公開可能とは結論づけません。SDKバイナリは
+Gitへ追加せず、各開発者のローカルSDKからビルド時に取り込みます。
 ## 固定バージョン
 
 | 項目 | バージョン |
@@ -78,7 +47,7 @@ HTP operation executionは0件であり、NPU trainingは未達です。
 | Kotlin | 2.1.0 |
 | compileSdk / targetSdk | 35 |
 | minSdk | 26 |
-| NDK | 27.0.12077973 |
+| NDK | 26.2.11394342（r26c、QAIRT 2.48 `sdk.yaml`準拠） |
 | CMake | 3.22.1 |
 | ABI | `arm64-v8a`のみ |
 
@@ -278,16 +247,16 @@ QNN_HTP_FORWARD_DW_DX
 QNN_HTP_FULL_STEP
 ```
 
-QNN CPU modeはQAIRT 2.48.40で実機実行済みです。HTP modeは全てdeviceCreateで停止し、
-context、graph、tensor、演算へ進みません。
+QNN CPU modeと`QNN_HTP_FORWARD`はQAIRT 2.48.40で実機実行済みです。HTP forwardは
+context作成、固定MatMul finalize/execute、runtime weight update後の再実行まで成功しています。
 
 | mode | QNNへ移す処理 | CPUに残す処理 | 現在 |
 |---|---|---|---|
 | `QNN_CPU_FORWARD` | QNN CPU forward | 比較値 | SUCCESS、graph再利用確認済み |
-| `QNN_HTP_FORWARD` | HTP forward | 比較値 | deviceCreate=14001で停止 |
-| `QNN_HTP_FORWARD_CPU_BACKWARD` | HTP forward | loss、`dP`、`dW`、SGD | HTP初期化未成立のため未実施 |
-| `QNN_HTP_FORWARD_DW` | HTP forward、`dW` | loss、`dP`、SGD | HTP初期化未成立のため未実施 |
-| `QNN_HTP_FORWARD_DW_DX` | HTP forward、`dW`、`dX` | loss、`dP`、SGD | HTP初期化未成立のため未実施 |
+| `QNN_HTP_FORWARD` | HTP forward | 比較値 | SUCCESS、graph再利用とruntime weight update確認済み |
+| `QNN_HTP_FORWARD_CPU_BACKWARD` | HTP forward | loss、`dP`、`dW`、SGD | forwardはHTP、backward/updateはCPUで試験可能 |
+| `QNN_HTP_FORWARD_DW` | HTP forward、`dW` | loss、`dP`、SGD | 今回の正式回帰対象外、成功未確認 |
+| `QNN_HTP_FORWARD_DW_DX` | HTP forward、`dW`、`dX` | loss、`dP`、SGD | `NOT_IMPLEMENTED` |
 | `QNN_HTP_FULL_STEP` | 成立した場合だけ全step | 未確定 | `NOT_IMPLEMENTED` |
 
 Preset:
@@ -527,19 +496,15 @@ global CPU Executorを使います。本アプリはJNI worker thread内でExecu
 
 ## QNN / QAIRT状況
 
-2026-07-14時点でQAIRT 2.48.40.260702151143を監査し、Android AArch64の公式tool、CPU/HTP
-backend、V81 stub、HTP Prepare、SampleApp、header/APIを確認済みです。QNN core APIは2.37.0、
-HTP backend APIは5.48.0です。
+正式構成はQAIRT `2.48.40.260702151143`です。QNN Core APIは`2.37.0`、HTP Backend APIは
+`5.48.0`、対象はSM8850/V81です。
 
-- QNN CPUの最小MatMulとPhoneLM forward/graph再利用は成功。
-- HTPはlibrary load、provider選択、logCreate、backendCreateまで成功。
-- NULL-config deviceCreateはPhoneLM、公式SampleApp、独立最小再現の全てで14001。
-- 公式qnn-net-run HTPもdevice creationで停止、CPU backendは成功。
-- vendor signed V81 skelは存在するがshellからread/stat/pull不可。
-- vendor QNN versionとQAIRT 2.48.40との正式な互換性は未確認。
-
-SDK、vendor binary、APK、生ログ、ローカルSDK絶対パスはGitや公開support bundleへ含めません。
-
+- QAIRT 2.47と2.48の両方でHTP初期化・固定MatMul実行に成功し、版固有回帰を否定した。
+- host runtime、V81 Stub、unsigned V81 Skelは必ず同一SDKルートから取り込む。
+- Skelは版別アプリ専用領域へ安全に展開し、そのパスをプロセス限定DSP探索の先頭へ置く。
+- compile-time SDK Build IDと`QnnBackend_getBuildId`の実行時値を照合する。
+- CPU fallbackは常に明示し、成功条件として扱わない。
+- QAIRT SDK、Qualcomm binary、APK、生ログ、ローカルSDK絶対パスはGitや公開support bundleへ含めない。
 ### 正式なSDK取得
 
 QAIRT/QNN SDKやQualcomm binaryは自動取得せず、非公式mirrorも使用しません。
@@ -642,8 +607,9 @@ QNN OFFでは`qnn_runtime_stub.cpp`だけを選択し、QAIRT header/libraryをc
 - Android arm64のCPU/HTP/HTP Prepare/V81 stubはローカルSDKからbuild時にstageし、Gitには
   追加しません。
 
-これはstubをQNN-enabled APKへ混入させないための意図的なfail-fastです。DSP側はvendor signed
-V81 skelを使用し、vendor領域の変更やSDK unsigned skelの配置は行っていません。
+これはstubをQNN-enabled APKへ混入させないための意図的なfail-fastです。DSP側は同じローカル
+SDKのunsigned V81 SkelをAPK assetへ取り込み、版別アプリ専用領域へ展開します。vendor領域や
+システム設定は変更しません。公開APKでの再配布可否は別途ライセンス確認が必要です。
 
 ### SDK検出値
 
@@ -665,16 +631,15 @@ official_htp_backend_sample=...
 QAIRT 2.48.40.260702151143、QNN core API 2.37.0、HTP backend API 5.48.0、Android
 AArch64 backend/stub/prepareの実ファイルを確認済みです。ローカル絶対パスは公開資料へ含めません。
 
-### HTP初期化成立後に再開する順序
+### HTP検証の順序
 
-1. Qualcomm/nubiaからNX741J firmwareに対応するQAIRT/QNN版と第三者HTPアクセス条件を得る。
-2. 同じNULL-config device-only probeでdeviceCreate成功を確認する。
-3. 成功した場合だけHTP forwardをCPU基準と比較する。
-4. その後に限り`transpose(X) * dP`の`dW`、CPU master weight/SGDへ進む。
+1. SDK metadata/header/runtime/Stub/Skelの完全Build IDを検査する。
+2. versioned app-private SkelをSHA-256検証後にDSP探索パスへ追加する。
+3. device-only probeでbackend/device/context createを個別検証する。
+4. 固定MatMulのfinalize/executeとruntime weight update後の再実行をCPU基準と比較する。
+5. HTP backward/optimizerは実測後にのみ成功と表現する。
 
-QNN CPU成功をHTP成功として扱わず、backend初期化、graph finalize、executeの各errorを
-API名、op、shape、dtype、quantizationとともに記録します。
-
+QNN CPU成功をHTP成功として扱わず、各API結果と`cpu_fallback=false`を記録します。
 ## 達成状況
 
 | 条件 | 状況 |
@@ -695,8 +660,8 @@ API名、op、shape、dtype、quantizationとともに記録します。
 | QAIRT SDK inventory script | 達成 |
 | QAIRT SDK検出 | 達成（2.48.40.260702151143） |
 | QNN CPU forward | 達成、graph再利用確認済み |
-| QNN HTP deviceCreate | 失敗（14001）、三経路で独立再現 |
-| QNN HTP forward/dW | deviceCreate未成立のため未実施 |
+| QNN HTP backend/device/context create | 達成（すべて0） |
+| QNN HTP forward | 達成、固定MatMul再実行とruntime weight update確認済み |
 | NPU勾配によるloss低下 | 未達 |
 
 ## 既知の制約

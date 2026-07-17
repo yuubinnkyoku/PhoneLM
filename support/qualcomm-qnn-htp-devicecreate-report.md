@@ -1,3 +1,10 @@
+> **HISTORICAL_RESULT_SUPERSEDED (2026-07-17):** This document records the earlier vendor-only DSP
+> search condition. Subsequent controlled tests succeeded with both QAIRT 2.47 and 2.48 when the
+> matching V81 Stub and unsigned V81 Skel came from the same SDK and the Skel was available through
+> an app-private, process-local DSP search path. The earlier `deviceCreate=14001` result is not a
+> QAIRT 2.48 regression and does not mean that the device disallows HTP. See
+> `docs/qnn-htp-qairt-2.48.md` for the current configuration. Qualcomm binary redistribution remains
+> a separate, unresolved license question.
 # QnnDevice_create returns QNN_DEVICE_ERROR_INVALID_CONFIG on SM8850 HTP V81 with QAIRT 2.48.40
 
 ## Summary

@@ -43,4 +43,7 @@ $env:QNN_MODEL_LIB_NAME = "libminimal_matmul.so"
 
 同一model libraryを公式 `qnn-net-run` + `libQnnCpu.so` で実行し、`Result_0/P.raw` とNumPy基準値を比較した。結果は `max_abs_error=0.0`、完全一致だった。
 
-HTPではSDKのbackend extension schemaに従い、`libQnnHtpNetRunExtensions.so` と `devices: [{"dsp_arch":"v81", "pd_session":"signed", "device_id":0}]` も使用した。SDKのunsigned V81 skelはproduction端末へ配置せず、既存vendor signed skelの探索先を `ADSP_LIBRARY_PATH` に含めた。
+その後の統制試験ではQAIRT 2.47と2.48の双方について、同一SDKのHTP backend、V81 Stub、
+unsigned V81 Skelを専用ディレクトリへ揃え、Skelディレクトリを`ADSP_LIBRARY_PATH`の先頭へ
+置くことでHTP MatMulに成功した。版固有の回帰ではない。PhoneLMは同じ条件を版別アプリ専用
+領域で再現する。ローカル検証での同梱と公開再配布は別であり、再配布可否は未確認である。

@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,26 +7,75 @@ plugins {
 
 val phoneLmEnableQnn = providers.gradleProperty("phonelm.enableQnn").orElse("false")
 val qairtSdkRoot = providers.gradleProperty("qairt.sdkRoot").orElse("")
-fun qairtBuildId(): String {
+val expectedQairtBuildId = providers.gradleProperty("qairt.expectedBuildId")
+    .orElse("2.48.40.260702151143")
+val expectedQairtVersion = "2.48.40"
+val androidNdkVersion = "26.2.11394342"
+val htpArchitecture = "V81"
+
+fun File.sha256(): String = inputStream().use { input ->
+    val digest = MessageDigest.getInstance("SHA-256")
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        digest.update(buffer, 0, count)
+    }
+    digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+data class QairtMetadata(
+    val version: String,
+    val buildId: String,
+    val qnnApiVersion: String,
+    val skelSha256: String,
+)
+
+fun inspectQairt(): QairtMetadata {
     val root = file(qairtSdkRoot.get())
+    require(root.isDirectory) { "QAIRT SDK root does not exist: $root" }
     val yaml = root.resolve("sdk.yaml").readText()
     val header = root.resolve("include/QNN/QnnSdkBuildId.h").readText()
     val version = Regex("(?m)^version:\\s*(\\S+)").find(yaml)!!.groupValues[1]
     val build = Regex("(?m)^build_id:\\s*(\\S+)").find(yaml)!!.groupValues[1]
     val headerId = Regex("QNN_SDK_BUILD_ID\\s+\"v([^\"]+)\"").find(header)!!.groupValues[1]
-    val expected = "$version.$build"
-    require(headerId == expected) { "Mixed QAIRT distribution: sdk.yaml=$expected, header=$headerId" }
+    val yamlId = "$version.$build"
+    require(headerId == yamlId) { "Mixed QAIRT distribution: sdk.yaml=$yamlId, header=$headerId" }
+    require(headerId == expectedQairtBuildId.get()) {
+        "Unsupported QAIRT distribution: expected=${expectedQairtBuildId.get()}, actual=$headerId"
+    }
+    require(version == expectedQairtVersion) {
+        "Unsupported QAIRT version: expected=$expectedQairtVersion, actual=$version"
+    }
+    require(Regex("(?m)^android-ndk:\\s*r26c\\s*$").containsMatchIn(yaml)) {
+        "QAIRT 2.48 metadata does not declare the expected Android NDK r26c"
+    }
+    listOf("QnnCommon.h", "QnnInterface.h", "QnnSdkBuildId.h", "QnnBackend.h",
+        "QnnDevice.h", "QnnContext.h", "QnnGraph.h", "HTP/QnnHtpDevice.h").forEach {
+        require(root.resolve("include/QNN/$it").isFile) { "Incomplete QAIRT headers: $it" }
+    }
     listOf("libQnnSystem.so", "libQnnCpu.so", "libQnnHtp.so", "libQnnHtpPrepare.so",
         "libQnnHtpV81Stub.so").forEach {
         require(root.resolve("lib/aarch64-android/$it").isFile) { "Incomplete QAIRT distribution: $it" }
     }
-    require(root.resolve("lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so").isFile) {
-        "Incomplete QAIRT distribution: libQnnHtpV81Skel.so"
-    }
-    logger.lifecycle("PhoneLM QAIRT SDK: ${root.absolutePath} ($expected)")
-    return expected
+    val skel = root.resolve("lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so")
+    require(skel.isFile) { "Incomplete QAIRT distribution: libQnnHtpV81Skel.so" }
+    val common = root.resolve("include/QNN/QnnCommon.h").readText()
+    fun macro(name: String) = Regex("(?m)^#define\\s+$name\\s+(\\d+)")
+        .find(common)?.groupValues?.get(1) ?: error("Missing $name")
+    val api = listOf("QNN_API_VERSION_MAJOR", "QNN_API_VERSION_MINOR", "QNN_API_VERSION_PATCH")
+        .joinToString(".") { macro(it) }
+    logger.lifecycle("PhoneLM QAIRT SDK root: ${root.absolutePath}")
+    logger.lifecycle("PhoneLM QAIRT version: $version")
+    logger.lifecycle("PhoneLM QAIRT build ID: $headerId")
+    logger.lifecycle("PhoneLM QNN API version: $api")
+    logger.lifecycle("PhoneLM Android NDK version: $androidNdkVersion (QAIRT requirement: r26c)")
+    logger.lifecycle("PhoneLM target ABI: arm64-v8a")
+    logger.lifecycle("PhoneLM HTP architecture: $htpArchitecture")
+    return QairtMetadata(version, headerId, api, skel.sha256())
 }
-val selectedQairtBuildId = if (phoneLmEnableQnn.get().toBoolean()) qairtBuildId() else "DISABLED"
+val selectedQairt = if (phoneLmEnableQnn.get().toBoolean()) inspectQairt() else null
+val selectedQairtBuildId = selectedQairt?.buildId ?: "DISABLED"
 val qnnJniDir = layout.buildDirectory.dir("generated/qnnJni/arm64-v8a")
 val qnnDspAssetDir = layout.buildDirectory.dir("generated/qnnDspAssets/qnn")
 val stageQnnDspAsset by tasks.registering(Sync::class) {
@@ -33,6 +84,16 @@ val stageQnnDspAsset by tasks.registering(Sync::class) {
         include("libQnnHtpV81Skel.so")
     }
     into(qnnDspAssetDir)
+    doLast {
+        val metadata = selectedQairt ?: return@doLast
+        qnnDspAssetDir.get().file("qairt.properties").asFile.writeText(
+            "version=${metadata.version}\n" +
+                "buildId=${metadata.buildId}\n" +
+                "qnnApiVersion=${metadata.qnnApiVersion}\n" +
+                "htpArchitecture=$htpArchitecture\n" +
+                "skelSha256=${metadata.skelSha256}\n",
+        )
+    }
 }
 val stageQnnJni by tasks.registering(Sync::class) {
     onlyIf { phoneLmEnableQnn.get().toBoolean() }
@@ -46,7 +107,11 @@ android {
     namespace = "com.yuubinnkyoku.phonelm"
     compileSdk = 35
     // Match the Android NDK declared by the selected QAIRT distribution.
-    ndkVersion = "26.2.11394342"
+    ndkVersion = androidNdkVersion
+
+    buildFeatures {
+        buildConfig = true
+    }
 
     defaultConfig {
         applicationId = "com.yuubinnkyoku.phonelm"
@@ -54,6 +119,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("boolean", "PHONELM_QNN_ENABLED", phoneLmEnableQnn.get())
+        buildConfigField("String", "QAIRT_BUILD_ID", "\"$selectedQairtBuildId\"")
+        buildConfigField("String", "HTP_ARCHITECTURE", "\"$htpArchitecture\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
