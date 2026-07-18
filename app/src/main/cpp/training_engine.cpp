@@ -73,6 +73,9 @@ const char* executionModeName(ExecutionMode mode) {
         case ExecutionMode::QNN_HTP_FORWARD_DW_DX: return "QNN_HTP_FORWARD_DW_DX";
         case ExecutionMode::QNN_HTP_FULL_STEP: return "QNN_HTP_FULL_STEP";
         case ExecutionMode::QNN_HTP_DEVICE_PROBE: return "QNN_HTP_DEVICE_PROBE";
+        case ExecutionMode::QNN_CPU_LINEAR_TRAINING: return "QNN_CPU_LINEAR_TRAINING";
+        case ExecutionMode::QNN_HTP_LINEAR_TRAINING: return "QNN_HTP_LINEAR_TRAINING";
+        case ExecutionMode::QNN_LINEAR_GRADIENT_CHECK: return "QNN_LINEAR_GRADIENT_CHECK";
         default: return "UNKNOWN";
     }
 }
@@ -106,6 +109,9 @@ std::string TrainingEngine::run(ExecutionMode mode,
         case ExecutionMode::QNN_HTP_FORWARD_DW_DX:
         case ExecutionMode::QNN_HTP_FULL_STEP:
         case ExecutionMode::QNN_HTP_DEVICE_PROBE:
+        case ExecutionMode::QNN_CPU_LINEAR_TRAINING:
+        case ExecutionMode::QNN_HTP_LINEAR_TRAINING:
+        case ExecutionMode::QNN_LINEAR_GRADIENT_CHECK:
             return qnn::runLinearExperiment(mode, config, log);
         default: {
             const std::string report =

@@ -18,6 +18,9 @@ enum class ExecutionMode(val nativeCode: Int) {
     QNN_HTP_FORWARD_DW_DX(8),
     QNN_HTP_FULL_STEP(9),
     QNN_HTP_DEVICE_PROBE(10),
+    QNN_CPU_LINEAR_TRAINING(11),
+    QNN_HTP_LINEAR_TRAINING(12),
+    QNN_LINEAR_GRADIENT_CHECK(13),
     ;
 
     companion object {

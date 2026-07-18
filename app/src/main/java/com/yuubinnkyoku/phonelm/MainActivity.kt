@@ -198,7 +198,13 @@ class MainActivity : Activity() {
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
         val requested = intent.getStringExtra("phonelm.mode") ?: return
         val mode = runCatching { ExecutionMode.valueOf(requested) }.getOrNull() ?: return
-        applyPreset(BenchmarkConfig(Backend.CPU, 2, 4, 20, 0, 0.1f, 20_260_710L))
+        val batchSize = intent.getIntExtra("phonelm.batch_size", 2)
+        val dimension = intent.getIntExtra("phonelm.dimension", 4)
+        val steps = intent.getIntExtra("phonelm.steps", 20)
+        val warmupSteps = intent.getIntExtra("phonelm.warmup_steps", 0)
+        val learningRate = intent.getStringExtra("phonelm.learning_rate")?.toFloatOrNull() ?: 0.1f
+        val seed = intent.getStringExtra("phonelm.seed")?.toLongOrNull() ?: 20_260_710L
+        applyPreset(BenchmarkConfig(Backend.CPU, batchSize, dimension, steps, warmupSteps, learningRate, seed))
         Log.i("PhoneLMDeviceTest", "DEVICE_TEST_START mode=$requested")
         startMode(mode)
     }

@@ -17,12 +17,22 @@ const BackendInfo& Runtime::info() const {
     return info_;
 }
 const std::string& Runtime::diagnostics() const { return diagnostics_; }
+const RuntimeMetrics& Runtime::metrics() const { return metrics_; }
 
 bool Runtime::prepareMatMul(uint32_t, uint32_t, uint32_t, bool, std::string& error) {
     error = "QNN_DISABLED: MatMul unavailable"; return false;
 }
 bool Runtime::executeMatMul(const std::vector<float>&, const std::vector<float>&,
                             std::vector<float>&, std::string& error) {
+    error = "QNN_DISABLED: MatMul unavailable"; return false;
+}bool Runtime::setInitialWeight(const std::vector<float>&, std::string& error) {
+    error = "QNN_DISABLED: weight binding unavailable"; return false;
+}
+bool Runtime::updateWeight(const std::vector<float>&, std::string& error) {
+    error = "QNN_DISABLED: weight update unavailable"; return false;
+}
+bool Runtime::executePrepared(const std::vector<float>&, std::vector<float>&,
+                              std::string& error) {
     error = "QNN_DISABLED: MatMul unavailable"; return false;
 }
 
