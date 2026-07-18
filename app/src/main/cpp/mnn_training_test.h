@@ -22,6 +22,11 @@ struct TrainingConfig {
     int warmupSteps = 0;
     float learningRate = 0.1f;
     std::uint64_t seed = 20260710;
+    int sampleCount = 512;
+    int epochs = 0;
+    int measuredSteps = 0;
+    int correctnessInterval = 0;
+    bool benchmarkMode = false;
 };
 
 struct TrainingOutcome {

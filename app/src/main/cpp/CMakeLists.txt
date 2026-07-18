@@ -126,6 +126,7 @@ add_library(phonelm_native SHARED
     training_engine.cpp
     qnn/qnn_backend_info.cpp
     qnn/qnn_linear_training.cpp
+    qnn/qnn_training_benchmark.cpp
     ${PHONELM_QNN_RUNTIME_SOURCE}
     ${PHONELM_QNN_OPTIONAL_SOURCES}
     qnn/qnn_tensor.cpp

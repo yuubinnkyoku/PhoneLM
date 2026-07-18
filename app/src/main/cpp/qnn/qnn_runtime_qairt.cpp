@@ -7,6 +7,7 @@
 #include <android/log.h>
 #include <dlfcn.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
@@ -235,10 +236,13 @@ bool Runtime::setInitialWeight(const std::vector<float>& weight, std::string& er
 }
 
 bool Runtime::updateWeight(const std::vector<float>& weight, std::string& error) {
-    const auto started = Clock::now();
     if (!impl_ || !impl_->graph) { error = "runtime weight update requires a finalized graph"; return false; }
     if (weight.size() != impl_->weightElements) { error = "runtime weight update size mismatch"; return false; }
-    impl_->weight = weight;
+    auto started = Clock::now();
+    std::copy(weight.begin(), weight.end(), impl_->weight.begin());
+    metrics_.weightBufferCopyUs.push_back(elapsedUs(started));
+    started = Clock::now();
+    impl_->inputs[1].v1.clientBuf = {impl_->weight.data(), static_cast<uint32_t>(impl_->weight.size() * sizeof(float))};
     metrics_.weightUpdateUs.push_back(elapsedUs(started));
     ++metrics_.runtimeWeightUpdateCount;
     return true;
@@ -252,9 +256,13 @@ bool Runtime::executePrepared(const std::vector<float>& input, std::vector<float
         return false;
     }
     out.resize(impl_->outputElements);
+    auto bindStarted = Clock::now();
     impl_->inputs[0].v1.clientBuf = {const_cast<float*>(input.data()), static_cast<uint32_t>(input.size() * sizeof(float))};
     impl_->inputs[1].v1.clientBuf = {impl_->weight.data(), static_cast<uint32_t>(impl_->weight.size() * sizeof(float))};
+    metrics_.inputBindUs.push_back(elapsedUs(bindStarted));
+    bindStarted = Clock::now();
     impl_->output.v1.clientBuf = {out.data(), static_cast<uint32_t>(out.size() * sizeof(float))};
+    metrics_.outputBindUs.push_back(elapsedUs(bindStarted));
     const auto started = Clock::now();
     const auto status = impl_->api.graphExecute(impl_->graph, impl_->inputs, 2, &impl_->output, 1, nullptr, nullptr);
     metrics_.executeUs.push_back(elapsedUs(started));

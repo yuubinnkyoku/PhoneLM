@@ -62,6 +62,11 @@ object NativeBenchmarkEngine : BenchmarkEngine {
         warmupSteps = config.warmupSteps,
         learningRate = config.learningRate,
         seed = config.seed,
+        sampleCount = config.sampleCount,
+        epochs = config.epochs,
+        measuredSteps = config.measuredSteps,
+        correctnessInterval = config.correctnessInterval,
+        benchmarkMode = config.benchmarkMode,
         progressCallback = ProgressCallback(progress),
     )
 }

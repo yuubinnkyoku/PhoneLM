@@ -99,8 +99,8 @@ class MainActivity : Activity() {
         qnnForwardDwButton.setOnClickListener { startMode(ExecutionMode.QNN_HTP_FORWARD_DW) }
 
         applyPreset(BenchmarkConfig.small())
-        viewModel.loadEnvironment()
         runDebugIntentIfRequested()
+        viewModel.loadEnvironment()
     }
 
     private fun prepareQnnDspLibrary() {
@@ -204,9 +204,45 @@ class MainActivity : Activity() {
         val warmupSteps = intent.getIntExtra("phonelm.warmup_steps", 0)
         val learningRate = intent.getStringExtra("phonelm.learning_rate")?.toFloatOrNull() ?: 0.1f
         val seed = intent.getStringExtra("phonelm.seed")?.toLongOrNull() ?: 20_260_710L
-        applyPreset(BenchmarkConfig(Backend.CPU, batchSize, dimension, steps, warmupSteps, learningRate, seed))
+        val sampleCount = intent.getIntExtra("phonelm.sample_count", 512)
+        val epochs = intent.getIntExtra("phonelm.epochs", 0)
+        val measuredSteps = intent.getIntExtra("phonelm.measured_steps", 0)
+        val correctnessInterval = intent.getIntExtra("phonelm.correctness_interval", 0)
+        val benchmarkMode = intent.getBooleanExtra("phonelm.benchmark_mode", false)
+        val config = BenchmarkConfig(Backend.CPU, batchSize, dimension, steps, warmupSteps,
+            learningRate, seed, sampleCount, epochs, measuredSteps, correctnessInterval,
+            benchmarkMode)
+        applyPreset(config)
         Log.i("PhoneLMDeviceTest", "DEVICE_TEST_START mode=$requested")
-        startMode(mode)
+        val validationError = config.validationError()
+        if (validationError != null) {
+            Log.e("PhoneLMDeviceTest", "DEVICE_TEST_REJECTED error=$validationError")
+            return
+        }
+        Thread({
+            val report = NativeBridge.nativeRunExecutionMode(
+                executionMode = mode.nativeCode,
+                batchSize = config.batchSize,
+                dimension = config.dimension,
+                steps = config.steps,
+                warmupSteps = config.warmupSteps,
+                learningRate = config.learningRate,
+                seed = config.seed,
+                sampleCount = config.sampleCount,
+                epochs = config.epochs,
+                measuredSteps = config.measuredSteps,
+                correctnessInterval = config.correctnessInterval,
+                benchmarkMode = config.benchmarkMode,
+                progressCallback = ProgressCallback { },
+            )
+            openFileOutput("device-test-result.txt", MODE_PRIVATE).bufferedWriter().use {
+                it.write(report)
+            }
+            Log.i("PhoneLMDeviceTest", "DEVICE_TEST_DONE\n$report")
+            runOnUiThread {
+                resultText.text = report
+            }
+        }, "PhoneLM-device-test").start()
     }
 
     private fun applyPreset(config: BenchmarkConfig) {

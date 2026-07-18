@@ -22,6 +22,10 @@ enum class ExecutionMode : int {
     QNN_CPU_LINEAR_TRAINING = 11,
     QNN_HTP_LINEAR_TRAINING = 12,
     QNN_LINEAR_GRADIENT_CHECK = 13,
+    QNN_CPU_MULTIBATCH_TRAINING = 14,
+    QNN_HTP_MULTIBATCH_TRAINING = 15,
+    QNN_CPU_TRAINING_BENCHMARK = 16,
+    QNN_HTP_TRAINING_BENCHMARK = 17,
 };
 
 const char* executionModeName(ExecutionMode mode);

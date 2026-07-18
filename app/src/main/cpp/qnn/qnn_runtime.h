@@ -27,6 +27,9 @@ struct RuntimeMetrics {
     double graphFinalizeUs = 0.0;
     std::vector<double> executeUs;
     std::vector<double> weightUpdateUs;
+    std::vector<double> weightBufferCopyUs;
+    std::vector<double> inputBindUs;
+    std::vector<double> outputBindUs;
 };
 class Runtime {
 public:

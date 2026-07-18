@@ -21,6 +21,10 @@ enum class ExecutionMode(val nativeCode: Int) {
     QNN_CPU_LINEAR_TRAINING(11),
     QNN_HTP_LINEAR_TRAINING(12),
     QNN_LINEAR_GRADIENT_CHECK(13),
+    QNN_CPU_MULTIBATCH_TRAINING(14),
+    QNN_HTP_MULTIBATCH_TRAINING(15),
+    QNN_CPU_TRAINING_BENCHMARK(16),
+    QNN_HTP_TRAINING_BENCHMARK(17),
     ;
 
     companion object {
@@ -40,6 +44,11 @@ data class BenchmarkConfig(
     val warmupSteps: Int,
     val learningRate: Float = 0.1f,
     val seed: Long = 20_260_710L,
+    val sampleCount: Int = 512,
+    val epochs: Int = 0,
+    val measuredSteps: Int = 0,
+    val correctnessInterval: Int = 0,
+    val benchmarkMode: Boolean = false,
 ) {
     fun validationError(): String? {
         if (batchSize !in 1..4096) return "batchSize must be in 1..4096"
@@ -49,6 +58,10 @@ data class BenchmarkConfig(
         if (!learningRate.isFinite() || learningRate <= 0f || learningRate > 10f) {
             return "learningRate must be finite and in (0, 10]"
         }
+        if (sampleCount !in 1..1_000_000) return "sampleCount must be in 1..1000000"
+        if (epochs !in 0..100_000) return "epochs must be in 0..100000"
+        if (measuredSteps !in 0..100_000) return "measuredSteps must be in 0..100000"
+        if (correctnessInterval !in 0..100_000) return "correctnessInterval must be in 0..100000"
 
         val matrixElements = dimension.toLong() * dimension.toLong()
         val batchElements = batchSize.toLong() * dimension.toLong()

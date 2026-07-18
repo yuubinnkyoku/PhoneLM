@@ -76,6 +76,10 @@ const char* executionModeName(ExecutionMode mode) {
         case ExecutionMode::QNN_CPU_LINEAR_TRAINING: return "QNN_CPU_LINEAR_TRAINING";
         case ExecutionMode::QNN_HTP_LINEAR_TRAINING: return "QNN_HTP_LINEAR_TRAINING";
         case ExecutionMode::QNN_LINEAR_GRADIENT_CHECK: return "QNN_LINEAR_GRADIENT_CHECK";
+        case ExecutionMode::QNN_CPU_MULTIBATCH_TRAINING: return "QNN_CPU_MULTIBATCH_TRAINING";
+        case ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING: return "QNN_HTP_MULTIBATCH_TRAINING";
+        case ExecutionMode::QNN_CPU_TRAINING_BENCHMARK: return "QNN_CPU_TRAINING_BENCHMARK";
+        case ExecutionMode::QNN_HTP_TRAINING_BENCHMARK: return "QNN_HTP_TRAINING_BENCHMARK";
         default: return "UNKNOWN";
     }
 }
@@ -112,6 +116,10 @@ std::string TrainingEngine::run(ExecutionMode mode,
         case ExecutionMode::QNN_CPU_LINEAR_TRAINING:
         case ExecutionMode::QNN_HTP_LINEAR_TRAINING:
         case ExecutionMode::QNN_LINEAR_GRADIENT_CHECK:
+        case ExecutionMode::QNN_CPU_MULTIBATCH_TRAINING:
+        case ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING:
+        case ExecutionMode::QNN_CPU_TRAINING_BENCHMARK:
+        case ExecutionMode::QNN_HTP_TRAINING_BENCHMARK:
             return qnn::runLinearExperiment(mode, config, log);
         default: {
             const std::string report =

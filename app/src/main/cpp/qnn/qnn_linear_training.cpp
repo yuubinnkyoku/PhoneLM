@@ -1,4 +1,5 @@
 #include "qnn_linear_training.h"
+#include "qnn_training_benchmark.h"
 #include "qnn_runtime.h"
 #include "../cpu_reference_training.h"
 
@@ -379,6 +380,14 @@ std::string trainingReport(ExecutionMode mode, const TrainingConfig& config, boo
 std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config,
                                 const LogSink& log) {
     std::string report;
+    if (mode == ExecutionMode::QNN_CPU_MULTIBATCH_TRAINING ||
+        mode == ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING ||
+        mode == ExecutionMode::QNN_CPU_TRAINING_BENCHMARK ||
+        mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK) {
+        report = runTrainingBenchmarkExperiment(mode, config);
+        if (log) log(report);
+        return report;
+    }
     if (mode == ExecutionMode::QNN_LINEAR_GRADIENT_CHECK) {
         report = gradientCheckReport(config);
     } else if (mode == ExecutionMode::QNN_CPU_LINEAR_TRAINING) {
@@ -390,7 +399,7 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
         std::string error;
         const bool initialized = probe.initialize(QnnBackendKind::HTP, error);
         std::ostringstream stream;
-        stream << "QNN_HTP_DEVICE_PROBE_RESULT\nqnn_backend=HTP\n" << probe.diagnostics()
+        stream << "QNN_HTP_DEVICE_PROBE_RESULT\nexecution_mode=QNN_HTP_DEVICE_PROBE\nqnn_backend=HTP\n" << probe.diagnostics()
                << "backend_created=" << (probe.diagnostics().find("backend_create_result=0") != std::string::npos ? "true" : "false")
                << "\ndevice_created=" << (probe.diagnostics().find("device_create_result=0") != std::string::npos ? "true" : "false")
                << "\ncontext_created=" << (initialized ? "true" : "false")

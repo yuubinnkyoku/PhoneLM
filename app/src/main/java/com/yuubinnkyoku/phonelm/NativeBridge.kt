@@ -37,6 +37,11 @@ object NativeBridge {
         warmupSteps: Int,
         learningRate: Float,
         seed: Long,
+        sampleCount: Int,
+        epochs: Int,
+        measuredSteps: Int,
+        correctnessInterval: Int,
+        benchmarkMode: Boolean,
         progressCallback: ProgressCallback,
     ): String
 }

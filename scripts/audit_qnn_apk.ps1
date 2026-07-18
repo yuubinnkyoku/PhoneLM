@@ -95,7 +95,11 @@ $report.Add("forbidden_2_47_strings=false")
 $report.Add("host_sdk_path_present=false")
 $report.Add("status=$(if ($failures.Count -eq 0) { 'SUCCESS' } else { 'FAILED' })")
 foreach ($failure in $failures) { $report.Add("error=$failure") }
-$destination = [IO.Path]::GetFullPath((Join-Path (Get-Location) $ReportPath))
+$destination = if ([IO.Path]::IsPathFullyQualified($ReportPath)) {
+    [IO.Path]::GetFullPath($ReportPath)
+} else {
+    [IO.Path]::GetFullPath((Join-Path (Get-Location) $ReportPath))
+}
 [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination)) | Out-Null
 $report | Set-Content -LiteralPath $destination -Encoding utf8
 $report

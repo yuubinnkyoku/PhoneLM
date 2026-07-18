@@ -164,6 +164,11 @@ Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeRunExecutionMode(
     jint warmupSteps,
     jfloat learningRate,
     jlong seed,
+    jint sampleCount,
+    jint epochs,
+    jint measuredSteps,
+    jint correctnessInterval,
+    jboolean benchmarkMode,
     jobject progressCallback) {
     bool expected = false;
     if (!gRunning.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
@@ -215,6 +220,11 @@ Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeRunExecutionMode(
     config.warmupSteps = warmupSteps;
     config.learningRate = learningRate;
     config.seed = static_cast<std::uint64_t>(seed);
+    config.sampleCount = sampleCount;
+    config.epochs = epochs;
+    config.measuredSteps = measuredSteps;
+    config.correctnessInterval = correctnessInterval;
+    config.benchmarkMode = benchmarkMode == JNI_TRUE;
 
     try {
         const auto report = phonelm::TrainingEngine::run(
