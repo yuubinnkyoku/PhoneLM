@@ -200,6 +200,8 @@ class MainActivity : Activity() {
         val mode = runCatching { ExecutionMode.valueOf(requested) }.getOrNull() ?: return
         val batchSize = intent.getIntExtra("phonelm.batch_size", 2)
         val dimension = intent.getIntExtra("phonelm.dimension", 4)
+        val hiddenDimension = intent.getIntExtra("phonelm.hidden_dimension", dimension)
+        val outputDimension = intent.getIntExtra("phonelm.output_dimension", maxOf(1, dimension / 2))
         val steps = intent.getIntExtra("phonelm.steps", 20)
         val warmupSteps = intent.getIntExtra("phonelm.warmup_steps", 0)
         val learningRate = intent.getStringExtra("phonelm.learning_rate")?.toFloatOrNull() ?: 0.1f
@@ -209,9 +211,11 @@ class MainActivity : Activity() {
         val measuredSteps = intent.getIntExtra("phonelm.measured_steps", 0)
         val correctnessInterval = intent.getIntExtra("phonelm.correctness_interval", 0)
         val benchmarkMode = intent.getBooleanExtra("phonelm.benchmark_mode", false)
-        val config = BenchmarkConfig(Backend.CPU, batchSize, dimension, steps, warmupSteps,
-            learningRate, seed, sampleCount, epochs, measuredSteps, correctnessInterval,
-            benchmarkMode)
+        val config = BenchmarkConfig(backend = Backend.CPU, batchSize = batchSize, dimension = dimension,
+            steps = steps, warmupSteps = warmupSteps, learningRate = learningRate, seed = seed,
+            sampleCount = sampleCount, epochs = epochs, measuredSteps = measuredSteps,
+            correctnessInterval = correctnessInterval, benchmarkMode = benchmarkMode,
+            hiddenDimension = hiddenDimension, outputDimension = outputDimension)
         applyPreset(config)
         Log.i("PhoneLMDeviceTest", "DEVICE_TEST_START mode=$requested")
         val validationError = config.validationError()
@@ -224,6 +228,8 @@ class MainActivity : Activity() {
                 executionMode = mode.nativeCode,
                 batchSize = config.batchSize,
                 dimension = config.dimension,
+                hiddenDimension = config.hiddenDimension,
+                outputDimension = config.outputDimension,
                 steps = config.steps,
                 warmupSteps = config.warmupSteps,
                 learningRate = config.learningRate,

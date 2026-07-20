@@ -31,6 +31,13 @@ struct Runtime::Impl {
     Qnn_DeviceHandle_t device = nullptr;
     Qnn_ContextHandle_t context = nullptr;
     Qnn_GraphHandle_t graph = nullptr;
+    Qnn_GraphHandle_t dWeightGraph = nullptr;
+    Qnn_Tensor_t dWeightInputs[2] = {QNN_TENSOR_INIT, QNN_TENSOR_INIT};
+    Qnn_Tensor_t dWeightOutput = QNN_TENSOR_INIT;
+    uint32_t dWeightADims[2]{}, dWeightBDims[2]{}, dWeightODims[2]{};
+    uint32_t dWeightInputElements = 0;
+    uint32_t dPredictionElements = 0;
+    uint32_t dWeightOutputElements = 0;
     Qnn_Tensor_t inputs[2] = {QNN_TENSOR_INIT, QNN_TENSOR_INIT};
     Qnn_Tensor_t output = QNN_TENSOR_INIT;
     uint32_t adims[2]{}, bdims[2]{}, odims[2]{};
@@ -38,6 +45,13 @@ struct Runtime::Impl {
     uint32_t weightElements = 0;
     uint32_t outputElements = 0;
     std::vector<float> weight;
+    struct Slot { Qnn_GraphHandle_t graph=nullptr; Qnn_Tensor_t in[2]={QNN_TENSOR_INIT,QNN_TENSOR_INIT}; Qnn_Tensor_t out=QNN_TENSOR_INIT; uint32_t d0[2]{},d1[2]{},doo[2]{}; uint32_t n0=0,n1=0,no=0; } dx,dw2,dh,dw1;
+    Qnn_GraphHandle_t mlpForward=nullptr;
+    Qnn_Tensor_t mlpInputs[3]={QNN_TENSOR_INIT,QNN_TENSOR_INIT,QNN_TENSOR_INIT};
+    Qnn_Tensor_t mlpZ=QNN_TENSOR_INIT, mlpH=QNN_TENSOR_INIT, mlpP=QNN_TENSOR_INIT;
+    uint32_t xDims[2]{},w1Dims[2]{},w2Dims[2]{},zDims[2]{},pDims[2]{};
+    uint32_t batch=0,inDim=0,hidDim=0,outDim=0;
+    std::vector<float> mlpW1,mlpW2;
 };
 
 const char* backendKindName(QnnBackendKind kind) {
@@ -228,6 +242,134 @@ bool Runtime::prepareMatMul(uint32_t m, uint32_t k, uint32_t n, bool trans0, std
     return true;
 }
 
+bool Runtime::prepareDWeightMatMul(uint32_t batchSize, uint32_t inputDimension,
+                                    uint32_t outputDimension, std::string& error) {
+    if (!impl_ || !impl_->context) { error = "runtime not initialized"; return false; }
+    impl_->dWeightADims[0] = batchSize;
+    impl_->dWeightADims[1] = inputDimension;
+    impl_->dWeightBDims[0] = batchSize;
+    impl_->dWeightBDims[1] = outputDimension;
+    impl_->dWeightODims[0] = inputDimension;
+    impl_->dWeightODims[1] = outputDimension;
+    impl_->dWeightInputElements = batchSize * inputDimension;
+    impl_->dPredictionElements = batchSize * outputDimension;
+    impl_->dWeightOutputElements = inputDimension * outputDimension;
+    tensor(impl_->dWeightInputs[0], "dw_x", QNN_TENSOR_TYPE_APP_WRITE,
+           impl_->dWeightADims);
+    tensor(impl_->dWeightInputs[1], "dw_dp", QNN_TENSOR_TYPE_APP_WRITE,
+           impl_->dWeightBDims);
+    tensor(impl_->dWeightOutput, "dw_out", QNN_TENSOR_TYPE_APP_READ,
+           impl_->dWeightODims);
+
+    auto started = Clock::now();
+    auto status = impl_->api.graphCreate(impl_->context, "phonelm_dw_matmul", nullptr,
+                                         &impl_->dWeightGraph);
+    metrics_.dWeightGraphCreateUs = elapsedUs(started);
+    ++metrics_.graphCreateCount;
+    ++metrics_.dWeightGraphCreateCount;
+    if (status != QNN_SUCCESS) {
+        error = "dWeightGraphCreate=" + std::to_string(QNN_GET_ERROR_CODE(status));
+        return false;
+    }
+    for (auto& input : impl_->dWeightInputs) {
+        status = impl_->api.tensorCreateGraphTensor(impl_->dWeightGraph, &input);
+        if (status != QNN_SUCCESS) {
+            error = "dWeightTensorCreate(input)=" +
+                    std::to_string(QNN_GET_ERROR_CODE(status));
+            return false;
+        }
+    }
+    status = impl_->api.tensorCreateGraphTensor(impl_->dWeightGraph,
+                                                 &impl_->dWeightOutput);
+    if (status != QNN_SUCCESS) {
+        error = "dWeightTensorCreate(output)=" +
+                std::to_string(QNN_GET_ERROR_CODE(status));
+        return false;
+    }
+
+    Qnn_Scalar_t transpose = QNN_SCALAR_INIT;
+    transpose.dataType = QNN_DATATYPE_BOOL_8;
+    transpose.bool8Value = true;
+    Qnn_Param_t param = QNN_PARAM_INIT;
+    param.paramType = QNN_PARAMTYPE_SCALAR;
+    param.name = QNN_OP_MAT_MUL_PARAM_TRANSPOSE_IN0;
+    param.scalarParam = transpose;
+    Qnn_OpConfig_t op = QNN_OPCONFIG_INIT;
+    op.v1.name = "dweight_matmul";
+    op.v1.packageName = QNN_OP_PACKAGE_NAME_QTI_AISW;
+    op.v1.typeName = QNN_OP_MAT_MUL;
+    op.v1.numOfParams = 1;
+    op.v1.params = &param;
+    op.v1.numOfInputs = 2;
+    op.v1.inputTensors = impl_->dWeightInputs;
+    op.v1.numOfOutputs = 1;
+    op.v1.outputTensors = &impl_->dWeightOutput;
+    status = impl_->api.graphAddNode(impl_->dWeightGraph, op);
+    if (status != QNN_SUCCESS) {
+        error = "dWeightGraphAddNode=" +
+                std::to_string(QNN_GET_ERROR_CODE(status));
+        return false;
+    }
+
+    started = Clock::now();
+    status = impl_->api.graphFinalize(impl_->dWeightGraph, nullptr, nullptr);
+    metrics_.dWeightGraphFinalizeUs = elapsedUs(started);
+    ++metrics_.graphFinalizeCount;
+    ++metrics_.dWeightGraphFinalizeCount;
+    if (status != QNN_SUCCESS) {
+        error = "dWeightGraphFinalize=" +
+                std::to_string(QNN_GET_ERROR_CODE(status));
+        return false;
+    }
+    diagnostics_ +=
+        "dw_graph_create=success\ndw_graph_finalize=success\n"
+        "dw_transpose_implementation=QNN_MATMUL_TRANSPOSE_IN0\n";
+    return true;
+}
+
+bool Runtime::executeDWeight(const std::vector<float>& input,
+                             const std::vector<float>& dPrediction,
+                             std::vector<float>& dWeight, std::string& error) {
+    if (!impl_ || !impl_->dWeightGraph) {
+        error = "dW graph not finalized";
+        return false;
+    }
+    if (input.size() != impl_->dWeightInputElements ||
+        dPrediction.size() != impl_->dPredictionElements) {
+        error = "dW input buffer size mismatch";
+        return false;
+    }
+    dWeight.resize(impl_->dWeightOutputElements);
+    auto started = Clock::now();
+    impl_->dWeightInputs[0].v1.clientBuf = {
+        const_cast<float*>(input.data()),
+        static_cast<uint32_t>(input.size() * sizeof(float))};
+    metrics_.dWeightXBindUs.push_back(elapsedUs(started));
+    ++metrics_.xInputUpdateCount;
+    started = Clock::now();
+    impl_->dWeightInputs[1].v1.clientBuf = {
+        const_cast<float*>(dPrediction.data()),
+        static_cast<uint32_t>(dPrediction.size() * sizeof(float))};
+    metrics_.dPredictionBindUs.push_back(elapsedUs(started));
+    ++metrics_.dPredictionInputUpdateCount;
+    started = Clock::now();
+    impl_->dWeightOutput.v1.clientBuf = {
+        dWeight.data(), static_cast<uint32_t>(dWeight.size() * sizeof(float))};
+    metrics_.dWeightOutputBindUs.push_back(elapsedUs(started));
+    started = Clock::now();
+    const auto status = impl_->api.graphExecute(
+        impl_->dWeightGraph, impl_->dWeightInputs, 2, &impl_->dWeightOutput, 1,
+        nullptr, nullptr);
+    metrics_.dWeightExecuteUs.push_back(elapsedUs(started));
+    ++metrics_.graphExecuteCount;
+    ++metrics_.dWeightGraphExecuteCount;
+    if (status != QNN_SUCCESS) {
+        error = "dWeightGraphExecute=" +
+                std::to_string(QNN_GET_ERROR_CODE(status));
+        return false;
+    }
+    return true;
+}
 bool Runtime::setInitialWeight(const std::vector<float>& weight, std::string& error) {
     if (!impl_ || !impl_->graph) { error = "weight binding requires a finalized graph"; return false; }
     if (weight.size() != impl_->weightElements) { error = "weight buffer size mismatch"; return false; }
@@ -276,4 +418,5 @@ bool Runtime::executeMatMul(const std::vector<float>& a, const std::vector<float
     const bool weightOk = impl_ && impl_->weight.empty() ? setInitialWeight(b, error) : updateWeight(b, error);
     return weightOk && executePrepared(a, out, error);
 }
+#include "qnn_runtime_mlp.inc"
 }

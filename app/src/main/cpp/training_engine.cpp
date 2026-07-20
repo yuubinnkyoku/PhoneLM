@@ -4,6 +4,7 @@
 #include "cpu_reference_training.h"
 #include "qnn/qnn_backend_info.h"
 #include "qnn/qnn_linear_training.h"
+#include "qnn/qnn_mlp_training.h"
 
 #include <cmath>
 #include <iomanip>
@@ -80,6 +81,14 @@ const char* executionModeName(ExecutionMode mode) {
         case ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING: return "QNN_HTP_MULTIBATCH_TRAINING";
         case ExecutionMode::QNN_CPU_TRAINING_BENCHMARK: return "QNN_CPU_TRAINING_BENCHMARK";
         case ExecutionMode::QNN_HTP_TRAINING_BENCHMARK: return "QNN_HTP_TRAINING_BENCHMARK";
+        case ExecutionMode::QNN_HTP_DW_CHECK: return "QNN_HTP_DW_CHECK";
+        case ExecutionMode::QNN_HTP_FORWARD_HTP_DW_TRAINING: return "QNN_HTP_FORWARD_HTP_DW_TRAINING";
+        case ExecutionMode::QNN_HTP_FORWARD_HTP_DW_BENCHMARK: return "QNN_HTP_FORWARD_HTP_DW_BENCHMARK";        case ExecutionMode::QNN_HTP_DX_CHECK: return "QNN_HTP_DX_CHECK";
+        case ExecutionMode::QNN_CPU_MLP_TRAINING: return "QNN_CPU_MLP_TRAINING";
+        case ExecutionMode::QNN_HTP_MLP_CPU_BACKWARD: return "QNN_HTP_MLP_CPU_BACKWARD";
+        case ExecutionMode::QNN_HTP_MLP_HTP_LINEAR_BACKWARD: return "QNN_HTP_MLP_HTP_LINEAR_BACKWARD";
+        case ExecutionMode::QNN_HTP_MLP_BENCHMARK: return "QNN_HTP_MLP_BENCHMARK";
+        case ExecutionMode::QNN_MLP_GRADIENT_CHECK: return "QNN_MLP_GRADIENT_CHECK";
         default: return "UNKNOWN";
     }
 }
@@ -120,7 +129,17 @@ std::string TrainingEngine::run(ExecutionMode mode,
         case ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING:
         case ExecutionMode::QNN_CPU_TRAINING_BENCHMARK:
         case ExecutionMode::QNN_HTP_TRAINING_BENCHMARK:
+        case ExecutionMode::QNN_HTP_DW_CHECK:
+        case ExecutionMode::QNN_HTP_FORWARD_HTP_DW_TRAINING:
+        case ExecutionMode::QNN_HTP_FORWARD_HTP_DW_BENCHMARK:
             return qnn::runLinearExperiment(mode, config, log);
+        case ExecutionMode::QNN_HTP_DX_CHECK:
+        case ExecutionMode::QNN_CPU_MLP_TRAINING:
+        case ExecutionMode::QNN_HTP_MLP_CPU_BACKWARD:
+        case ExecutionMode::QNN_HTP_MLP_HTP_LINEAR_BACKWARD:
+        case ExecutionMode::QNN_HTP_MLP_BENCHMARK:
+        case ExecutionMode::QNN_MLP_GRADIENT_CHECK:
+            return qnn::runMlpExperiment(mode, config, stopRequested, log);
         default: {
             const std::string report =
                 "status=NOT_IMPLEMENTED\nerror=unknown execution mode";

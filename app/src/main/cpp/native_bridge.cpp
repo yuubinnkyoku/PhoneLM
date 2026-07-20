@@ -160,6 +160,8 @@ Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeRunExecutionMode(
     jint executionMode,
     jint batchSize,
     jint dimension,
+    jint hiddenDimension,
+    jint outputDimension,
     jint steps,
     jint warmupSteps,
     jfloat learningRate,
@@ -216,6 +218,8 @@ Java_com_yuubinnkyoku_phonelm_NativeBridge_nativeRunExecutionMode(
     config.backend = phonelm::BackendKind::CPU;
     config.batchSize = batchSize;
     config.dimension = dimension;
+    config.hiddenDimension = hiddenDimension;
+    config.outputDimension = outputDimension;
     config.steps = steps;
     config.warmupSteps = warmupSteps;
     config.learningRate = learningRate;

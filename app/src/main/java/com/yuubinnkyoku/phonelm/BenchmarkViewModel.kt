@@ -58,6 +58,8 @@ object NativeBenchmarkEngine : BenchmarkEngine {
         executionMode = mode.nativeCode,
         batchSize = config.batchSize,
         dimension = config.dimension,
+        hiddenDimension = config.hiddenDimension,
+        outputDimension = config.outputDimension,
         steps = config.steps,
         warmupSteps = config.warmupSteps,
         learningRate = config.learningRate,

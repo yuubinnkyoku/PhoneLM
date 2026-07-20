@@ -25,6 +25,15 @@ enum class ExecutionMode(val nativeCode: Int) {
     QNN_HTP_MULTIBATCH_TRAINING(15),
     QNN_CPU_TRAINING_BENCHMARK(16),
     QNN_HTP_TRAINING_BENCHMARK(17),
+    QNN_HTP_DW_CHECK(18),
+    QNN_HTP_FORWARD_HTP_DW_TRAINING(19),
+    QNN_HTP_FORWARD_HTP_DW_BENCHMARK(20),
+    QNN_HTP_DX_CHECK(21),
+    QNN_CPU_MLP_TRAINING(22),
+    QNN_HTP_MLP_CPU_BACKWARD(23),
+    QNN_HTP_MLP_HTP_LINEAR_BACKWARD(24),
+    QNN_HTP_MLP_BENCHMARK(25),
+    QNN_MLP_GRADIENT_CHECK(26),
     ;
 
     companion object {
@@ -49,10 +58,14 @@ data class BenchmarkConfig(
     val measuredSteps: Int = 0,
     val correctnessInterval: Int = 0,
     val benchmarkMode: Boolean = false,
+    val hiddenDimension: Int = dimension,
+    val outputDimension: Int = maxOf(1, dimension / 2),
 ) {
     fun validationError(): String? {
         if (batchSize !in 1..4096) return "batchSize must be in 1..4096"
         if (dimension !in 1..4096) return "dimension must be in 1..4096"
+        if (hiddenDimension !in 1..4096) return "hiddenDimension must be in 1..4096"
+        if (outputDimension !in 1..4096) return "outputDimension must be in 1..4096"
         if (steps !in 1..100_000) return "steps must be in 1..100000"
         if (warmupSteps !in 0..10_000) return "warmupSteps must be in 0..10000"
         if (!learningRate.isFinite() || learningRate <= 0f || learningRate > 10f) {

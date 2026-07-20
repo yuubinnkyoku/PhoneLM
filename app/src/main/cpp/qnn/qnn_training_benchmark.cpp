@@ -142,7 +142,12 @@ struct StepRecord {
     double outputCopyUs = 0.0;
     double referenceCheckUs = 0.0;
     double lossUs = 0.0;
+    double dPredictionGenerationUs = 0.0;
     double gradientUs = 0.0;
+    double dWeightInputCopyUs = 0.0;
+    double dPredictionInputCopyUs = 0.0;
+    double dWeightExecuteUs = 0.0;
+    double dWeightOutputCopyUs = 0.0;
     double optimizerUs = 0.0;
     double weightBufferCopyUs = 0.0;
     double runtimeWeightUpdateUs = 0.0;
@@ -162,7 +167,7 @@ std::string failure(ExecutionMode mode, const std::string& api, const std::strin
     stream << "QNN_TRAINING_BENCHMARK_RESULT\nexecution_mode=" << executionModeName(mode)
            << "\nstatus=FAILED\nfailed_api=" << api
            << "\ncpu_fallback=false\nhtp_execute_failures="
-           << (api == "graph_execute" ? 1 : 0)
+           << (api.find("graph_execute") != std::string::npos ? 1 : 0)
            << "\nruntime_weight_update_failures="
            << (api == "runtime_weight_update" ? 1 : 0) << '\n'
            << diagnostics << "error=" << error;
@@ -180,11 +185,15 @@ void collect(const std::vector<StepRecord>& records,
 
 std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
                                            const TrainingConfig& requestedConfig) {
+    const bool htpDWeight = mode == ExecutionMode::QNN_HTP_DW_CHECK ||
+                            mode == ExecutionMode::QNN_HTP_FORWARD_HTP_DW_TRAINING ||
+                            mode == ExecutionMode::QNN_HTP_FORWARD_HTP_DW_BENCHMARK;
     const bool htp = mode == ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING ||
-                     mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK;
+                     mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK || htpDWeight;
     const bool benchmark = requestedConfig.benchmarkMode ||
                            mode == ExecutionMode::QNN_CPU_TRAINING_BENCHMARK ||
-                           mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK;
+                           mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK ||
+                           mode == ExecutionMode::QNN_HTP_FORWARD_HTP_DW_BENCHMARK;
     TrainingConfig config = requestedConfig;
     if (config.sampleCount < config.batchSize || config.sampleCount < config.dimension) {
         std::ostringstream error;
@@ -232,6 +241,11 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
                                    config.dimension, false, error)) {
             return failure(mode, "forward_graph_prepare", error, runtime.diagnostics());
         }
+        if (htpDWeight &&
+            !runtime.prepareDWeightMatMul(config.batchSize, config.dimension,
+                                          config.dimension, error)) {
+            return failure(mode, "dw_graph_prepare", error, runtime.diagnostics());
+        }
         if (!runtime.setInitialWeight(weight.values, error)) {
             return failure(mode, "initial_weight_bind", error, runtime.diagnostics());
         }
@@ -249,6 +263,13 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
     cpu::Matrix lastInput(config.batchSize, config.dimension);
     cpu::Matrix lastTarget(config.batchSize, config.dimension);
     float maximumForwardError = 0.0f;
+    float maximumDWeightError = 0.0f;
+    double dWeightAbsoluteErrorSum = 0.0;
+    std::size_t dWeightErrorCount = 0;
+    float maximumDWeightRelativeError = 0.0f;
+    bool dWeightChanged = false;
+    std::vector<float> firstCpuDWeight;
+    std::vector<float> firstHtpDWeight;
     bool nonFinite = false;
     bool referenceMatched = true;
 
@@ -319,8 +340,33 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
         for (std::size_t index = 0; index < difference.values.size(); ++index) {
             dPrediction.values[index] = difference.values[index] * scale;
         }
-        const auto gradient = cpu::matMul(cpu::transpose(lastInput), dPrediction);
-        record.gradientUs = elapsedUs(section);
+        record.dPredictionGenerationUs = elapsedUs(section);
+
+        cpu::Matrix gradient(config.dimension, config.dimension);
+        if (htpDWeight) {
+            std::vector<float> htpGradient;
+            if (!runtime.executeDWeight(lastInput.values, dPrediction.values,
+                                        htpGradient, error)) {
+                return failure(mode, "dw_graph_execute", error,
+                               runtime.diagnostics());
+            }
+            record.dWeightInputCopyUs =
+                runtime.metrics().dWeightXBindUs.back();
+            record.dPredictionInputCopyUs =
+                runtime.metrics().dPredictionBindUs.back();
+            record.dWeightExecuteUs = runtime.metrics().dWeightExecuteUs.back();
+            section = Clock::now();
+            std::copy(htpGradient.begin(), htpGradient.end(), gradient.values.begin());
+            record.dWeightOutputCopyUs = elapsedUs(section) +
+                runtime.metrics().dWeightOutputBindUs.back();
+            dWeightChanged |= std::any_of(
+                gradient.values.begin(), gradient.values.end(),
+                [](float value) { return value != 0.0f; });
+        } else {
+            section = Clock::now();
+            gradient = cpu::matMul(cpu::transpose(lastInput), dPrediction);
+            record.gradientUs = elapsedUs(section);
+        }
 
         const double preReferenceStepUs = elapsedUs(fullStepStarted);
         const bool checkReference =
@@ -333,7 +379,30 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
             const float forwardError = maxDifference(prediction, expected.values);
             maximumForwardError = std::max(maximumForwardError, forwardError);
             referenceMatched &= !htp || forwardError <= 1.0e-3f;
-            if (!benchmark) {
+            if (htpDWeight) {
+                const auto cpuGradient =
+                    cpu::matMul(cpu::transpose(lastInput), dPrediction);
+                for (std::size_t index = 0; index < gradient.values.size(); ++index) {
+                    const float absolute =
+                        std::fabs(gradient.values[index] - cpuGradient.values[index]);
+                    maximumDWeightError = std::max(maximumDWeightError, absolute);
+                    dWeightAbsoluteErrorSum += absolute;
+                    ++dWeightErrorCount;
+                    const float relative = absolute /
+                        std::max(std::fabs(cpuGradient.values[index]), 1.0e-12f);
+                    maximumDWeightRelativeError =
+                        std::max(maximumDWeightRelativeError, relative);
+                }
+                referenceMatched &= maximumDWeightError <= 1.0e-4f;
+                if (step == 0) {
+                    firstCpuDWeight = cpuGradient.values;
+                    firstHtpDWeight = gradient.values;
+                }
+                if (!benchmark) {
+                    cpu::sgdUpdate(referenceWeight, cpuGradient,
+                                   config.learningRate);
+                }
+            } else if (!benchmark) {
                 const auto state =
                     cpu::forwardBackward(lastInput, lastTarget, referenceWeight);
                 cpu::sgdUpdate(referenceWeight, state.dWeight, config.learningRate);
@@ -375,11 +444,14 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
     }
 
     float finalVerificationError = 0.0f;
+    bool nextForwardChanged = false;
     if (htp && !nonFinite) {
+        const auto previousPrediction = prediction;
         if (!runtime.executePrepared(lastInput.values, prediction, error)) {
             return failure(mode, "final_weight_verification_execute", error,
                            runtime.diagnostics());
         }
+        nextForwardChanged = maxDifference(previousPrediction, prediction) > 0.0f;
         const auto expected = cpu::matMul(lastInput, weight);
         finalVerificationError = maxDifference(prediction, expected.values);
         maximumForwardError =
@@ -399,12 +471,20 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
                          finalLoss < initialLoss &&
                          finalWeightError < initialWeightError &&
                          referenceMatched &&
-                         (!htp || runtime.metrics().runtimeWeightUpdateCount ==
-                                      static_cast<std::uint64_t>(totalSteps));
+                         (!htp || (runtime.metrics().runtimeWeightUpdateCount ==
+                                      static_cast<std::uint64_t>(totalSteps) &&
+                                  nextForwardChanged)) &&
+                         (!htpDWeight ||
+                          (dWeightChanged &&
+                           runtime.metrics().dWeightGraphCreateCount == 1 &&
+                           runtime.metrics().dWeightGraphFinalizeCount == 1 &&
+                           runtime.metrics().dWeightGraphExecuteCount ==
+                               static_cast<std::uint64_t>(totalSteps)));
 
     std::vector<double> inputPrepare, inputCopy, weightPrepare, preSync, execute,
-        postSync, outputCopy, referenceCheck, loss, gradient, optimizer,
-        weightCopy, runtimeUpdate, resultRecording, fullStep;
+        postSync, outputCopy, referenceCheck, loss, dPredictionGeneration,
+        gradient, dWeightInputCopy, dPredictionInputCopy, dWeightExecute, dWeightOutputCopy,
+        optimizer, weightCopy, runtimeUpdate, resultRecording, fullStep;
     collect(records, &StepRecord::inputPrepareUs, inputPrepare);
     collect(records, &StepRecord::inputCopyUs, inputCopy);
     collect(records, &StepRecord::weightPrepareUs, weightPrepare);
@@ -417,7 +497,12 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
     collect(records, &StepRecord::outputCopyUs, outputCopy);
     collect(records, &StepRecord::referenceCheckUs, referenceCheck);
     collect(records, &StepRecord::lossUs, loss);
+    collect(records, &StepRecord::dPredictionGenerationUs, dPredictionGeneration);
     collect(records, &StepRecord::gradientUs, gradient);
+    collect(records, &StepRecord::dWeightInputCopyUs, dWeightInputCopy);
+    collect(records, &StepRecord::dPredictionInputCopyUs, dPredictionInputCopy);
+    collect(records, &StepRecord::dWeightExecuteUs, dWeightExecute);
+    collect(records, &StepRecord::dWeightOutputCopyUs, dWeightOutputCopy);
     collect(records, &StepRecord::optimizerUs, optimizer);
     collect(records, &StepRecord::weightBufferCopyUs, weightCopy);
     collect(records, &StepRecord::runtimeWeightUpdateUs, runtimeUpdate);
@@ -460,23 +545,66 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
            << "final_weight_difference=" << finalWeightDifference << '\n'
            << "final_verification_max_abs_error=" << finalVerificationError << '\n'
            << "max_abs_error=" << maximumForwardError << '\n'
+           << "dw_max_abs_error=" << maximumDWeightError << '\n'
+           << "dw_mean_abs_error="
+           << (dWeightErrorCount ? dWeightAbsoluteErrorSum / dWeightErrorCount : 0.0)
+           << '\n'
+           << "dw_max_relative_error=" << maximumDWeightRelativeError << '\n'
+           << "dw_changed=" << (dWeightChanged ? "true" : "false") << '\n'
+           << "weight_changed="
+           << (maxDifference(dataset.initialWeight.values, weight.values) > 0.0f ? "true" : "false") << '\n'
+           << "next_forward_changed=" << (nextForwardChanged ? "true" : "false") << '\n'
+           << "updated_output_matches_cpu_reference="
+           << (finalVerificationError <= 1.0e-3f ? "true" : "false") << '\n'
            << "nan_detected=" << (nonFinite ? "true" : "false") << '\n'
            << "inf_detected=" << (nonFinite ? "true" : "false") << '\n'
            << "cpu_fallback=false\n"
            << "htp_execute_failures=0\n"
+           << "dw_graph_execute_result=" << (htpDWeight ? "success" : "not_applicable") << '\n'
            << "runtime_weight_update_failures=0\n"
            << "npu_forward_used=" << (htp ? "true" : "false") << '\n'
+           << "htp_dw_used=" << (htpDWeight ? "true" : "false") << '\n'
+           << "cpu_dw_fallback=false\n"
+           << "forward_backend=" << (htp ? "HTP" : "CPU") << '\n'
+           << "dw_backend=" << (htpDWeight ? "HTP" : "CPU") << '\n'
+           << "transpose_backend=" << (htpDWeight ? "HTP_GRAPH" : "CPU") << '\n'
            << "cpu_operations="
-           << (htp ? "loss,gradient,sgd_update,app_write_weight_copy"
-                   : "forward,loss,gradient,sgd_update") << '\n'
-           << "npu_operations=" << (htp ? "forward" : "none") << '\n'
+           << (htpDWeight ? "loss,dP,sgd_update,app_write_weight_copy"
+               : (htp ? "loss,dP,dW,sgd_update,app_write_weight_copy"
+                      : "forward,loss,dP,dW,sgd_update")) << '\n'
+           << "npu_operations="
+           << (htpDWeight ? "forward,dW_matmul" : (htp ? "forward" : "none")) << '\n'
            << "backward_on_htp=false\noptimizer_on_htp=false\n"
+           << "forward_and_weight_gradient_on_htp="
+           << (htpDWeight ? "true" : "false") << '\n'
            << "graph_create_count=" << (htp ? runtime.metrics().graphCreateCount : 0) << '\n'
            << "graph_finalize_count=" << (htp ? runtime.metrics().graphFinalizeCount : 0) << '\n'
            << "graph_execute_count=" << (htp ? runtime.metrics().graphExecuteCount : 0) << '\n'
+           << "forward_graph_create_count="
+           << (htp ? runtime.metrics().graphCreateCount -
+                         runtime.metrics().dWeightGraphCreateCount : 0) << '\n'
+           << "forward_graph_finalize_count="
+           << (htp ? runtime.metrics().graphFinalizeCount -
+                         runtime.metrics().dWeightGraphFinalizeCount : 0) << '\n'
+           << "forward_execute_count="
+           << (htp ? runtime.metrics().graphExecuteCount -
+                         runtime.metrics().dWeightGraphExecuteCount : 0) << '\n'
+           << "dw_graph_create_count=" << runtime.metrics().dWeightGraphCreateCount << '\n'
+           << "dw_graph_finalize_count=" << runtime.metrics().dWeightGraphFinalizeCount << '\n'
+           << "dw_execute_count=" << runtime.metrics().dWeightGraphExecuteCount << '\n'
+           << "x_input_update_count=" << runtime.metrics().xInputUpdateCount << '\n'
+           << "dp_input_update_count=" << runtime.metrics().dPredictionInputUpdateCount << '\n'
            << "runtime_weight_update_count="
            << (htp ? runtime.metrics().runtimeWeightUpdateCount : 0) << '\n'
            << "graph_reused=" << (htp ? "true" : "not_applicable") << '\n'
+           << "backend_shared=" << (htpDWeight ? "true" : "not_applicable") << '\n'
+           << "device_shared=" << (htpDWeight ? "true" : "not_applicable") << '\n'
+           << "context_shared=" << (htpDWeight ? "true" : "not_applicable") << '\n'
+           << "forward_dw_graphs=separate_same_context\n"
+           << "tensor_layout=row_major_dense_fp32\n"
+           << "x_shape=[B,I]\nw_shape=[I,O]\np_shape=[B,O]\n"
+           << "dp_shape=[B,O]\ndw_shape=[I,O]\n"
+           << "dw_transpose=QNN_MATMUL_TRANSPOSE_IN0\n"
            << "qnn_tensor_memory=RAW_app_owned_client_buffers\n"
            << "explicit_pre_execute_sync=false\n"
            << "explicit_post_execute_sync=false\n"
@@ -487,6 +615,8 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
            << "context_create_time_us=" << (htp ? runtime.metrics().contextCreateUs : 0.0) << '\n'
            << "graph_create_time_us=" << (htp ? runtime.metrics().graphCreateUs : 0.0) << '\n'
            << "graph_finalize_time_us=" << (htp ? runtime.metrics().graphFinalizeUs : 0.0) << '\n'
+           << "dw_graph_create_time_us=" << runtime.metrics().dWeightGraphCreateUs << '\n'
+           << "dw_graph_finalize_time_us=" << runtime.metrics().dWeightGraphFinalizeUs << '\n'
            << "first_execute_time_us="
            << (htp && !runtime.metrics().executeUs.empty()
                    ? runtime.metrics().executeUs.front() : 0.0) << '\n';
@@ -499,15 +629,35 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
     appendDistribution(stream, "output_copy", summarize(outputCopy));
     appendDistribution(stream, "cpu_reference_check", summarize(referenceCheck));
     appendDistribution(stream, "cpu_loss", summarize(loss));
+    appendDistribution(stream, "cpu_dp_generation", summarize(dPredictionGeneration));
     appendDistribution(stream, "cpu_gradient", summarize(gradient));
+    appendDistribution(stream, "x_or_xt_copy", summarize(dWeightInputCopy));
+    appendDistribution(stream, "dp_copy", summarize(dPredictionInputCopy));
+    appendDistribution(stream, "dw_execute", summarize(dWeightExecute));
+    appendDistribution(stream, "dw_output_copy", summarize(dWeightOutputCopy));
+    appendDistribution(stream, "x_transpose", summarize({}));
     appendDistribution(stream, "cpu_optimizer", summarize(optimizer));
     appendDistribution(stream, "weight_buffer_copy", summarize(weightCopy));
     appendDistribution(stream, "runtime_weight_update", summarize(runtimeUpdate));
     appendDistribution(stream, "result_recording", summarize(resultRecording));
     appendDistribution(stream, "full_step", summarize(fullStep));
+    if (htpDWeight) {
+        stream << "x_transpose_time_included_in_dw_execute=true\n"
+               << "cpu_dw=";
+        for (std::size_t index = 0; index < firstCpuDWeight.size(); ++index) {
+            if (index) stream << ',';
+            stream << firstCpuDWeight[index];
+        }
+        stream << "\nhtp_dw=";
+        for (std::size_t index = 0; index < firstHtpDWeight.size(); ++index) {
+            if (index) stream << ',';
+            stream << firstHtpDWeight[index];
+        }
+        stream << '\n';
+    }
     stream << "total_training_time_us=" << elapsedUs(totalStarted) << '\n'
            << "timings_csv_begin\n"
-           << "step,epoch,batch_index,measured,reference_checked,input_prepare_us,input_copy_us,weight_prepare_us,pre_execute_sync_us,qnn_execute_call_us,post_execute_sync_us,output_copy_us,cpu_reference_check_us,cpu_loss_us,cpu_gradient_us,cpu_optimizer_us,weight_buffer_copy_us,runtime_weight_update_us,result_recording_us,full_step_us,loss,weight_error\n";
+           << "step,epoch,batch_index,measured,reference_checked,input_prepare_us,input_copy_us,weight_prepare_us,pre_execute_sync_us,qnn_execute_call_us,post_execute_sync_us,output_copy_us,cpu_reference_check_us,cpu_loss_us,cpu_dp_generation_us,cpu_gradient_us,dw_input_copy_us,dp_input_copy_us,dw_execute_us,dw_output_copy_us,cpu_optimizer_us,weight_buffer_copy_us,runtime_weight_update_us,result_recording_us,full_step_us,loss,weight_error\n";
     for (const auto& record : records) {
         stream << record.step << ',' << record.epoch << ',' << record.batchIndex << ','
                << (record.measured ? "true" : "false") << ','
@@ -516,7 +666,9 @@ std::string runTrainingBenchmarkExperiment(ExecutionMode mode,
                << record.weightPrepareUs << ',' << record.preExecuteSyncUs << ','
                << record.executeUs << ',' << record.postExecuteSyncUs << ','
                << record.outputCopyUs << ',' << record.referenceCheckUs << ','
-               << record.lossUs << ',' << record.gradientUs << ','
+               << record.lossUs << ',' << record.dPredictionGenerationUs << ','
+               << record.gradientUs << ',' << record.dWeightInputCopyUs << ','
+               << record.dPredictionInputCopyUs << ',' << record.dWeightExecuteUs << ',' << record.dWeightOutputCopyUs << ','
                << record.optimizerUs << ',' << record.weightBufferCopyUs << ','
                << record.runtimeWeightUpdateUs << ',' << record.resultRecordingUs << ','
                << record.fullStepUs << ',' << record.loss << ','

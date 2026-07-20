@@ -383,7 +383,10 @@ std::string runLinearExperiment(ExecutionMode mode, const TrainingConfig& config
     if (mode == ExecutionMode::QNN_CPU_MULTIBATCH_TRAINING ||
         mode == ExecutionMode::QNN_HTP_MULTIBATCH_TRAINING ||
         mode == ExecutionMode::QNN_CPU_TRAINING_BENCHMARK ||
-        mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK) {
+        mode == ExecutionMode::QNN_HTP_TRAINING_BENCHMARK ||
+        mode == ExecutionMode::QNN_HTP_DW_CHECK ||
+        mode == ExecutionMode::QNN_HTP_FORWARD_HTP_DW_TRAINING ||
+        mode == ExecutionMode::QNN_HTP_FORWARD_HTP_DW_BENCHMARK) {
         report = runTrainingBenchmarkExperiment(mode, config);
         if (log) log(report);
         return report;

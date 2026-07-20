@@ -18,6 +18,8 @@ struct TrainingConfig {
     BackendKind backend = BackendKind::CPU;
     int batchSize = 8;
     int dimension = 128;
+    int hiddenDimension = 128;
+    int outputDimension = 64;
     int steps = 100;
     int warmupSteps = 0;
     float learningRate = 0.1f;

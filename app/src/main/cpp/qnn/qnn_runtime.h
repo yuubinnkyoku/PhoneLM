@@ -30,7 +30,17 @@ struct RuntimeMetrics {
     std::vector<double> weightBufferCopyUs;
     std::vector<double> inputBindUs;
     std::vector<double> outputBindUs;
-};
+    std::uint64_t dWeightGraphCreateCount = 0;
+    std::uint64_t dWeightGraphFinalizeCount = 0;
+    std::uint64_t dWeightGraphExecuteCount = 0;
+    std::uint64_t xInputUpdateCount = 0;
+    std::uint64_t dPredictionInputUpdateCount = 0;
+    double dWeightGraphCreateUs = 0.0;
+    double dWeightGraphFinalizeUs = 0.0;
+    std::vector<double> dWeightExecuteUs;
+    std::vector<double> dWeightXBindUs;
+    std::vector<double> dPredictionBindUs;
+    std::vector<double> dWeightOutputBindUs;};
 class Runtime {
 public:
     Runtime();
@@ -46,7 +56,45 @@ public:
     bool updateWeight(const std::vector<float>& weight, std::string& error);
     bool executePrepared(const std::vector<float>& input, std::vector<float>& output,
                          std::string& error);
-    const RuntimeMetrics& metrics() const;
+    bool prepareDWeightMatMul(uint32_t batchSize, uint32_t inputDimension,
+                              uint32_t outputDimension, std::string& error);
+    bool executeDWeight(const std::vector<float>& input,
+                        const std::vector<float>& dPrediction,
+                        std::vector<float>& dWeight, std::string& error);
+    bool prepareInputGradientMatMul(uint32_t batchSize, uint32_t inputDimension,
+                                    uint32_t outputDimension, std::string& error);
+    bool executeInputGradient(const std::vector<float>& dPrediction,
+                              const std::vector<float>& weight,
+                              std::vector<float>& dInput, std::string& error);
+    bool prepareMlp(uint32_t batchSize, uint32_t inputDimension,
+                    uint32_t hiddenDimension, uint32_t outputDimension,
+                    std::string& error, bool prepareSplitBackward = true);
+    bool prepareReluBackward(uint32_t batchSize, uint32_t hiddenDimension,
+                             std::string& error);
+    bool executeReluBackward(const std::vector<float>& activation,
+                             const std::vector<float>& dHidden,
+                             std::vector<std::uint8_t>& mask,
+                             std::vector<float>& dZ1, std::string& error);
+    bool prepareMlpFusedBackward(bool diagnosticOutputs, std::string& error);
+    bool executeMlpFusedBackward(const std::vector<float>& input,
+                                 const std::vector<float>& hidden,
+                                 const std::vector<float>& dPrediction,
+                                 std::vector<float>& dW2,
+                                 std::vector<float>& dHidden,
+                                 std::vector<std::uint8_t>& mask,
+                                 std::vector<float>& dZ1,
+                                 std::vector<float>& dW1, std::string& error);
+    bool setMlpWeights(const std::vector<float>& w1, const std::vector<float>& w2,
+                       std::string& error);
+    bool executeMlpForward(const std::vector<float>& input, std::vector<float>& hidden,
+                           std::vector<float>& prediction, std::string& error);
+    bool executeMlpSecondBackward(const std::vector<float>& hidden,
+                                  const std::vector<float>& dPrediction,
+                                  std::vector<float>& dW2, std::vector<float>& dHidden,
+                                  std::string& error);
+    bool executeMlpFirstBackward(const std::vector<float>& input,
+                                 const std::vector<float>& dZ1,
+                                 std::vector<float>& dW1, std::string& error);    const RuntimeMetrics& metrics() const;
 
 private:
     BackendInfo info_;

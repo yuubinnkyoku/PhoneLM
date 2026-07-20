@@ -33,6 +33,8 @@ object NativeBridge {
         executionMode: Int,
         batchSize: Int,
         dimension: Int,
+        hiddenDimension: Int,
+        outputDimension: Int,
         steps: Int,
         warmupSteps: Int,
         learningRate: Float,

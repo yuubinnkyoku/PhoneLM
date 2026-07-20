@@ -36,6 +36,14 @@ bool Runtime::executePrepared(const std::vector<float>&, std::vector<float>&,
     error = "QNN_DISABLED: MatMul unavailable"; return false;
 }
 
+bool Runtime::prepareDWeightMatMul(uint32_t, uint32_t, uint32_t, std::string& error) {
+    error = "QNN_DISABLED: dW MatMul unavailable"; return false;
+}
+bool Runtime::executeDWeight(const std::vector<float>&, const std::vector<float>&,
+                             std::vector<float>&, std::string& error) {
+    error = "QNN_DISABLED: dW MatMul unavailable"; return false;
+}
+
 bool Runtime::initialize(QnnBackendKind requestedBackend, std::string& error) {
     const std::string backend = backendKindName(requestedBackend);
     if (!info_.sdkDetected) {
@@ -51,4 +59,10 @@ bool Runtime::initialize(QnnBackendKind requestedBackend, std::string& error) {
     return false;
 }
 
-}  // namespace phonelm::qnn
+bool Runtime::prepareInputGradientMatMul(uint32_t,uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: dX unavailable";return false;}
+bool Runtime::executeInputGradient(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: dX unavailable";return false;}
+bool Runtime::prepareMlp(uint32_t,uint32_t,uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
+bool Runtime::setMlpWeights(const std::vector<float>&,const std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
+bool Runtime::executeMlpForward(const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
+bool Runtime::executeMlpSecondBackward(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
+bool Runtime::executeMlpFirstBackward(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}}  // namespace phonelm::qnn
