@@ -708,3 +708,4 @@ HTPで生成したdWによるloss低下まで確認した後にのみ、Transfor
 ## QNN HTP 2層ReLU MLP
 
 QAIRT 2.48のHTPで2層MLPのforwardと明示的なlinear backward（dW2、dH、dW1）を実行するモードを追加しました。loss、dP、ReLU backward、SGDはCPUです。詳細と再現手順は[docs/qnn-htp-mlp-training.md](docs/qnn-htp-mlp-training.md)を参照してください。
+- [QNN HTP fused backward](docs/qnn-htp-fused-backward.md)

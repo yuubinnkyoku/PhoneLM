@@ -185,6 +185,50 @@ std::string dxCheck(const TrainingConfig &) {
     << rt.diagnostics();
   return s.str();
 }
+std::string reluBackwardCheck() {
+  Runtime rt;
+  std::string e;
+  const std::string prefix =
+      "RELU_BACKWARD_CHECK\nexecution_mode=QNN_HTP_RELU_BACKWARD_CHECK\n";
+  if (!rt.initialize(QnnBackendKind::HTP, e))
+    return prefix + "status=FAILED\nfailed_api=initialize\nerror=" + e +
+           "\ncpu_fallback=false";
+  if (!rt.prepareReluBackward(2, 5, e))
+    return prefix + "status=FAILED\nfailed_api=prepareReluBackward\nerror=" +
+           e + "\ncpu_fallback=false\n" + rt.diagnostics();
+  Matrix activation(2, 5), dh(2, 5), ref(2, 5);
+  activation.values = {-1.0f, -0.1f, -1e-6f, 0.0f, 1e-6f,
+                       0.1f,  1.0f,  -0.0f, -1e-4f, 1e-4f};
+  dh.values = {0.25f, -0.5f, 0.75f, -1.0f, 1.25f,
+               -1.5f, 1.75f, -2.0f, 2.25f, -2.5f};
+  for (size_t k = 0; k < ref.values.size(); ++k)
+    ref.values[k] = activation.values[k] > 0.0f ? dh.values[k] : 0.0f;
+  std::vector<std::uint8_t> mask;
+  std::vector<float> output;
+  if (!rt.executeReluBackward(activation.values, dh.values, mask, output, e))
+    return prefix + "status=FAILED\nfailed_api=graphExecute\nerror=" + e +
+           "\ncpu_fallback=false\n" + rt.diagnostics();
+  Matrix got(2, 5, output);
+  bool maskMatches = mask.size() == ref.values.size();
+  for (size_t k = 0; maskMatches && k < mask.size(); ++k)
+    maskMatches = (mask[k] != 0) == (activation.values[k] > 0.0f);
+  const double ma = maxAbs(ref, got), me = meanAbs(ref, got),
+               mr = maxRel(ref, got);
+  const bool ok = ma <= 1e-7 && maskMatches && finite(got);
+  std::ostringstream out;
+  out << std::setprecision(9) << prefix
+      << "relu_backward_op_method=ElementWiseGreater+ElementWiseSelect\n"
+      << "tensor_shape=2x5\nmask_datatype=BOOL_8\noutput_datatype=FLOAT_32\n"
+      << "zero_boundary_rule=Z1_GT_0\nmax_abs_error=" << ma
+      << "\nmean_abs_error=" << me << "\nmax_relative_error=" << mr
+      << "\nmask_matches_cpu=" << (maskMatches ? "true" : "false")
+      << "\ngraph_create_result=0\ngraph_finalize_result=0\n"
+      << "graph_execute_result=0\ncpu_fallback=false\nnan_inf="
+      << (!finite(got) ? "true" : "false") << "\nstatus="
+      << (ok ? "SUCCESS" : "FAILED") << '\n'
+      << rt.diagnostics();
+  return out.str();
+}
 struct Summary {
   double min = 0, median = 0, mean = 0, sd = 0, p90 = 0, p95 = 0, max = 0;
 };
@@ -223,26 +267,41 @@ void emitStats(std::ostringstream &s, const char *n,
 std::string train(ExecutionMode mode, const TrainingConfig &c,
                   std::atomic_bool &stop) {
   const bool cpuOnly = mode == ExecutionMode::QNN_CPU_MLP_TRAINING;
-  const bool htpBw = mode == ExecutionMode::QNN_HTP_MLP_HTP_LINEAR_BACKWARD ||
+  const bool fused = mode == ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD ||
+                     mode ==
+                         ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK;
+  const bool htpBw = fused ||
+                     mode == ExecutionMode::QNN_HTP_MLP_HTP_LINEAR_BACKWARD ||
                      mode == ExecutionMode::QNN_HTP_MLP_BENCHMARK;
+  const bool fusedDiagnostic = fused && !c.benchmarkMode;
   auto d = makeData(c);
   const Matrix initialW1 = d.w1, initialW2 = d.w2;
   const float initial = pass(d.x, d.y, d.w1, d.w2).loss;
   Runtime rt;
   std::string e;
-  if (!cpuOnly && (!rt.initialize(QnnBackendKind::HTP, e) ||
-                   !rt.prepareMlp(c.batchSize, c.dimension, c.hiddenDimension,
-                                  c.outputDimension, e) ||
-                   !rt.setMlpWeights(d.w1.values, d.w2.values, e)))
+  const auto initializationStart = Clock::now();
+  if (!cpuOnly &&
+      (!rt.initialize(QnnBackendKind::HTP, e) ||
+       !rt.prepareMlp(c.batchSize, c.dimension, c.hiddenDimension,
+                      c.outputDimension, e, !fused) ||
+       (fused && !rt.prepareMlpFusedBackward(fusedDiagnostic, e)) ||
+       !rt.setMlpWeights(d.w1.values, d.w2.values, e)))
     return "MLP_TRAINING\nexecution_mode=" +
            std::string(executionModeName(mode)) +
            "\nstatus=FAILED\nfailed_api=HTP_prepare\nerror=" + e +
            "\ncpu_fallback=false";
+  const double initializationUs =
+      cpuOnly ? 0.0
+              : std::chrono::duration<double, std::micro>(Clock::now() -
+                                                          initializationStart)
+                    .count();
   const int steps =
       c.epochs > 0 ? (c.sampleCount / c.batchSize) * c.epochs : c.steps;
-  bool nan = false, dw1Nonzero = false, dw2Nonzero = false, dhNonzero = false;
-  double dw1err = 0, dw2err = 0, dherr = 0, dw1mean = 0, dw2mean = 0,
-         dhmean = 0, forwardErr = 0, updatedForwardErr = 0;
+  bool nan = false, dw1Nonzero = false, dw2Nonzero = false,
+       dhNonzero = false, dz1Nonzero = false;
+  double dw1err = 0, dw2err = 0, dherr = 0, dz1err = 0, dw1mean = 0,
+         dw2mean = 0, dhmean = 0, dz1mean = 0, forwardErr = 0,
+         updatedForwardErr = 0;
   Matrix lastX, lastY;
   std::vector<double> fullT, forwardT, lossDpT, backward2T, reluT, dw1T,
       optimizerT, updateT;
@@ -296,41 +355,64 @@ std::string train(ExecutionMode mode, const TrainingConfig &c,
       }
       if (htpBw) {
         t = Clock::now();
-        std::vector<float> w2v, dhv;
-        if (!rt.executeMlpSecondBackward(h.values, dp.values, w2v, dhv, e))
-          return "MLP_TRAINING\nexecution_mode=" +
-                 std::string(executionModeName(mode)) +
-                 "\nstatus=FAILED\nfailed_api=backward2_execute\nerror=" + e +
-                 "\ncpu_fallback=false";
-        backward2T.push_back(
-            std::chrono::duration<double, std::micro>(Clock::now() - t)
-                .count());
-        dw2 = Matrix(c.hiddenDimension, c.outputDimension, w2v);
-        dh = Matrix(c.batchSize, c.hiddenDimension, dhv);
-        t = Clock::now();
-        for (size_t i = 0; i < dz1.values.size(); ++i)
-          dz1.values[i] = h.values[i] > 0 ? dh.values[i] : 0;
-        reluT.push_back(
-            std::chrono::duration<double, std::micro>(Clock::now() - t)
-                .count());
-        t = Clock::now();
-        std::vector<float> w1v;
-        if (!rt.executeMlpFirstBackward(x.values, dz1.values, w1v, e))
-          return "MLP_TRAINING\nexecution_mode=" +
-                 std::string(executionModeName(mode)) +
-                 "\nstatus=FAILED\nfailed_api=backward1_execute\nerror=" + e +
-                 "\ncpu_fallback=false";
-        dw1T.push_back(
-            std::chrono::duration<double, std::micro>(Clock::now() - t)
-                .count());
-        dw1 = Matrix(c.dimension, c.hiddenDimension, w1v);
+        std::vector<float> w2v, dhv, dzv, w1v;
+        std::vector<std::uint8_t> mask;
+        if (fused) {
+          if (!rt.executeMlpFusedBackward(x.values, h.values, dp.values, w2v,
+                                          dhv, mask, dzv, w1v, e))
+            return "MLP_TRAINING\nexecution_mode=" +
+                   std::string(executionModeName(mode)) +
+                   "\nstatus=FAILED\nfailed_api=fused_backward_execute\nerror=" +
+                   e + "\ncpu_fallback=false\nhtp_relu_backward_used=false\n"
+                       "htp_fused_backward_used=false";
+          backward2T.push_back(
+              std::chrono::duration<double, std::micro>(Clock::now() - t)
+                  .count());
+          dw2 = Matrix(c.hiddenDimension, c.outputDimension, w2v);
+          dw1 = Matrix(c.dimension, c.hiddenDimension, w1v);
+          if (fusedDiagnostic) {
+            dh = Matrix(c.batchSize, c.hiddenDimension, dhv);
+            dz1 = Matrix(c.batchSize, c.hiddenDimension, dzv);
+          }
+        } else {
+          if (!rt.executeMlpSecondBackward(h.values, dp.values, w2v, dhv, e))
+            return "MLP_TRAINING\nexecution_mode=" +
+                   std::string(executionModeName(mode)) +
+                   "\nstatus=FAILED\nfailed_api=backward2_execute\nerror=" + e +
+                   "\ncpu_fallback=false";
+          backward2T.push_back(
+              std::chrono::duration<double, std::micro>(Clock::now() - t)
+                  .count());
+          dw2 = Matrix(c.hiddenDimension, c.outputDimension, w2v);
+          dh = Matrix(c.batchSize, c.hiddenDimension, dhv);
+          t = Clock::now();
+          for (size_t i = 0; i < dz1.values.size(); ++i)
+            dz1.values[i] = h.values[i] > 0 ? dh.values[i] : 0;
+          reluT.push_back(
+              std::chrono::duration<double, std::micro>(Clock::now() - t)
+                  .count());
+          t = Clock::now();
+          if (!rt.executeMlpFirstBackward(x.values, dz1.values, w1v, e))
+            return "MLP_TRAINING\nexecution_mode=" +
+                   std::string(executionModeName(mode)) +
+                   "\nstatus=FAILED\nfailed_api=backward1_execute\nerror=" + e +
+                   "\ncpu_fallback=false";
+          dw1T.push_back(
+              std::chrono::duration<double, std::micro>(Clock::now() - t)
+                  .count());
+          dw1 = Matrix(c.dimension, c.hiddenDimension, w1v);
+        }
         if (check) {
           dw1err = std::max(dw1err, maxAbs(ref.dw1, dw1));
           dw2err = std::max(dw2err, maxAbs(ref.dw2, dw2));
-          dherr = std::max(dherr, maxAbs(ref.dh, dh));
           dw1mean = std::max(dw1mean, meanAbs(ref.dw1, dw1));
           dw2mean = std::max(dw2mean, meanAbs(ref.dw2, dw2));
-          dhmean = std::max(dhmean, meanAbs(ref.dh, dh));
+          if (!fused || fusedDiagnostic) {
+            dherr = std::max(dherr, maxAbs(ref.dh, dh));
+            dz1err = std::max(dz1err, maxAbs(ref.dz1, dz1));
+            dhmean = std::max(dhmean, meanAbs(ref.dh, dh));
+            dz1mean = std::max(dz1mean, meanAbs(ref.dz1, dz1));
+          }
         }
       } else {
         auto t2 = Clock::now();
@@ -350,6 +432,9 @@ std::string train(ExecutionMode mode, const TrainingConfig &c,
                                            [](float v) { return v != 0.0f; });
     dhNonzero = dhNonzero || std::any_of(dh.values.begin(), dh.values.end(),
                                          [](float v) { return v != 0.0f; });
+    dz1Nonzero = dz1Nonzero ||
+                 std::any_of(dz1.values.begin(), dz1.values.end(),
+                             [](float v) { return v != 0.0f; });
     auto t = Clock::now();
     cpu::sgdUpdate(d.w1, dw1, c.learningRate);
     cpu::sgdUpdate(d.w2, dw2, c.learningRate);
@@ -399,28 +484,35 @@ std::string train(ExecutionMode mode, const TrainingConfig &c,
     << "\noutput_dim=" << c.outputDimension << "\nepochs=" << c.epochs
     << "\nsteps=" << steps << "\nlearning_rate=" << c.learningRate
     << "\ninitial_loss=" << initial << "\nfinal_loss=" << final
+    << "\nruntime_initialization_us=" << initializationUs
     << "\nprediction_mse=" << final
     << "\nprediction_max_abs_error=" << predictionMax
     << "\nforward_max_abs_error=" << forwardErr
     << "\ndw1_max_abs_error=" << dw1err << "\ndw2_max_abs_error=" << dw2err
-    << "\ndh_max_abs_error=" << dherr << "\ndw1_mean_abs_error=" << dw1mean
+    << "\ndh_max_abs_error=" << dherr << "\ndz1_max_abs_error=" << dz1err
+    << "\ndw1_mean_abs_error=" << dw1mean
     << "\ndw2_mean_abs_error=" << dw2mean << "\ndh_mean_abs_error=" << dhmean
+    << "\ndz1_mean_abs_error=" << dz1mean
     << "\nupdated_forward_max_abs_error=" << updatedForwardErr
     << "\nforward_backend=" << (cpuOnly ? "CPU" : "HTP")
     << "\ndw2_backend=" << (htpBw ? "HTP" : "CPU")
     << "\ndh_backend=" << (htpBw ? "HTP" : "CPU")
-    << "\nrelu_backward_backend=CPU\ndw1_backend=" << (htpBw ? "HTP" : "CPU")
+    << "\nrelu_backward_backend=" << (fused ? "HTP" : "CPU")
+    << "\ndw1_backend=" << (htpBw ? "HTP" : "CPU")
     << "\noptimizer_backend=CPU\nforward_graph_create_count="
     << (cpuOnly ? 0 : 1)
     << "\nforward_graph_finalize_count=" << (cpuOnly ? 0 : 1)
     << "\nforward_execute_count=" << (cpuOnly ? 0 : steps + 1)
-    << "\ndw2_graph_create_count=" << (cpuOnly ? 0 : 1)
-    << "\ndh_graph_create_count=" << (cpuOnly ? 0 : 1)
-    << "\ndw1_graph_create_count=" << (cpuOnly ? 0 : 1)
-    << "\nbackward_graph_finalize_count=" << (cpuOnly ? 0 : 3)
-    << "\ndw2_execute_count=" << (htpBw ? steps : 0)
-    << "\ndh_execute_count=" << (htpBw ? steps : 0)
-    << "\ndw1_execute_count=" << (htpBw ? steps : 0)
+    << "\ndw2_graph_create_count=" << (!cpuOnly && !fused ? 1 : 0)
+    << "\ndh_graph_create_count=" << (!cpuOnly && !fused ? 1 : 0)
+    << "\ndw1_graph_create_count=" << (!cpuOnly && !fused ? 1 : 0)
+    << "\nfused_backward_graph_create_count=" << (fused ? 1 : 0)
+    << "\nbackward_graph_finalize_count=" << (cpuOnly ? 0 : (fused ? 1 : 3))
+    << "\ndw2_execute_count=" << (htpBw && !fused ? steps : 0)
+    << "\ndh_execute_count=" << (htpBw && !fused ? steps : 0)
+    << "\ndw1_execute_count=" << (htpBw && !fused ? steps : 0)
+    << "\nfused_backward_execute_count=" << (fused ? steps : 0)
+    << "\nbackward_execute_count_per_step=" << (fused ? 1 : (htpBw ? 3 : 0))
     << "\nw1_initial_bind_count=" << (cpuOnly ? 0 : 1)
     << "\nw2_initial_bind_count=" << (cpuOnly ? 0 : 1)
     << "\nw1_update_count=" << (cpuOnly ? 0 : steps)
@@ -431,6 +523,7 @@ std::string train(ExecutionMode mode, const TrainingConfig &c,
     << "\ndw2_nonzero=" << (dw2Nonzero ? "true" : "false")
     << "\ndh_nonzero=" << (dhNonzero ? "true" : "false")
     << "\ndw1_nonzero=" << (dw1Nonzero ? "true" : "false")
+    << "\ndz1_nonzero=" << (dz1Nonzero ? "true" : "false")
     << "\nshared_w2_app_buffer=true\ncross_graph_w2_sync=true";
   emitStats(s, "forward", forwardT);
   emitStats(s, "loss_dp", lossDpT);
@@ -442,6 +535,8 @@ std::string train(ExecutionMode mode, const TrainingConfig &c,
   emitStats(s, "full_step", fullT);
   s << "\ncpu_fallback=false\nhtp_linear_backward_used="
     << (htpBw ? "true" : "false")
+    << "\nhtp_relu_backward_used=" << (fused ? "true" : "false")
+    << "\nhtp_fused_backward_used=" << (fused ? "true" : "false")
     << "\nnan_detected=" << (nan ? "true" : "false")
     << "\ninf_detected=false\nnan_inf=" << (nan ? "true" : "false")
     << "\nstatus=" << (ok ? "SUCCESS" : "FAILED");
@@ -457,6 +552,8 @@ std::string runMlpExperiment(ExecutionMode mode, const TrainingConfig &c,
     r = gradientCheck();
   else if (mode == ExecutionMode::QNN_HTP_DX_CHECK)
     r = dxCheck(c);
+  else if (mode == ExecutionMode::QNN_HTP_RELU_BACKWARD_CHECK)
+    r = reluBackwardCheck();
   else
     r = train(mode, c, stop);
   if (log)

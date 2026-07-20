@@ -52,6 +52,29 @@ struct Runtime::Impl {
     uint32_t xDims[2]{},w1Dims[2]{},w2Dims[2]{},zDims[2]{},pDims[2]{};
     uint32_t batch=0,inDim=0,hidDim=0,outDim=0;
     std::vector<float> mlpW1,mlpW2;
+    struct ReluBackward {
+        Qnn_GraphHandle_t graph = nullptr;
+        Qnn_Tensor_t inputs[3] = {QNN_TENSOR_INIT, QNN_TENSOR_INIT, QNN_TENSOR_INIT};
+        Qnn_Tensor_t mask = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dz = QNN_TENSOR_INIT;
+        uint32_t dims[2]{};
+        uint32_t elements = 0;
+        std::vector<float> zero;
+    } reluBackward;
+    struct FusedBackward {
+        Qnn_GraphHandle_t graph = nullptr;
+        Qnn_Tensor_t inputs[5] = {QNN_TENSOR_INIT, QNN_TENSOR_INIT,
+                                  QNN_TENSOR_INIT, QNN_TENSOR_INIT,
+                                  QNN_TENSOR_INIT};
+        Qnn_Tensor_t dw2 = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dh = QNN_TENSOR_INIT;
+        Qnn_Tensor_t mask = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dz = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dw1 = QNN_TENSOR_INIT;
+        uint32_t dpDims[2]{}, dw2Dims[2]{}, dw1Dims[2]{};
+        std::vector<float> zero;
+        bool diagnosticOutputs = false;
+    } fusedBackward;
 };
 
 const char* backendKindName(QnnBackendKind kind) {
@@ -185,12 +208,14 @@ bool Runtime::initialize(QnnBackendKind kind, std::string& error) {
     return true;
 }
 
-static void tensor(Qnn_Tensor_t& t, const char* name, Qnn_TensorType_t type, uint32_t* dims) {
+static void tensor(Qnn_Tensor_t& t, const char* name, Qnn_TensorType_t type,
+                   uint32_t* dims,
+                   Qnn_DataType_t dataType = QNN_DATATYPE_FLOAT_32) {
     t.version = QNN_TENSOR_VERSION_1;
     t.v1.name = name;
     t.v1.type = type;
     t.v1.dataFormat = QNN_TENSOR_DATA_FORMAT_DENSE;
-    t.v1.dataType = QNN_DATATYPE_FLOAT_32;
+    t.v1.dataType = dataType;
     t.v1.rank = 2;
     t.v1.dimensions = dims;
     t.v1.memType = QNN_TENSORMEMTYPE_RAW;

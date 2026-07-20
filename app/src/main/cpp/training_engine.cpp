@@ -89,6 +89,9 @@ const char* executionModeName(ExecutionMode mode) {
         case ExecutionMode::QNN_HTP_MLP_HTP_LINEAR_BACKWARD: return "QNN_HTP_MLP_HTP_LINEAR_BACKWARD";
         case ExecutionMode::QNN_HTP_MLP_BENCHMARK: return "QNN_HTP_MLP_BENCHMARK";
         case ExecutionMode::QNN_MLP_GRADIENT_CHECK: return "QNN_MLP_GRADIENT_CHECK";
+        case ExecutionMode::QNN_HTP_RELU_BACKWARD_CHECK: return "QNN_HTP_RELU_BACKWARD_CHECK";
+        case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD: return "QNN_HTP_MLP_FUSED_BACKWARD";
+        case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK: return "QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK";
         default: return "UNKNOWN";
     }
 }
@@ -139,6 +142,9 @@ std::string TrainingEngine::run(ExecutionMode mode,
         case ExecutionMode::QNN_HTP_MLP_HTP_LINEAR_BACKWARD:
         case ExecutionMode::QNN_HTP_MLP_BENCHMARK:
         case ExecutionMode::QNN_MLP_GRADIENT_CHECK:
+        case ExecutionMode::QNN_HTP_RELU_BACKWARD_CHECK:
+        case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD:
+        case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK:
             return qnn::runMlpExperiment(mode, config, stopRequested, log);
         default: {
             const std::string report =

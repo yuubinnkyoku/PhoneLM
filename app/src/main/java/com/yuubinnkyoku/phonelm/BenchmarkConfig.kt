@@ -34,6 +34,9 @@ enum class ExecutionMode(val nativeCode: Int) {
     QNN_HTP_MLP_HTP_LINEAR_BACKWARD(24),
     QNN_HTP_MLP_BENCHMARK(25),
     QNN_MLP_GRADIENT_CHECK(26),
+    QNN_HTP_RELU_BACKWARD_CHECK(27),
+    QNN_HTP_MLP_FUSED_BACKWARD(28),
+    QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK(29),
     ;
 
     companion object {

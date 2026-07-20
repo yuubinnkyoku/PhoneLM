@@ -61,8 +61,12 @@ bool Runtime::initialize(QnnBackendKind requestedBackend, std::string& error) {
 
 bool Runtime::prepareInputGradientMatMul(uint32_t,uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: dX unavailable";return false;}
 bool Runtime::executeInputGradient(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: dX unavailable";return false;}
-bool Runtime::prepareMlp(uint32_t,uint32_t,uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
+bool Runtime::prepareMlp(uint32_t,uint32_t,uint32_t,uint32_t,std::string&e,bool){e="QNN_DISABLED: MLP unavailable";return false;}
 bool Runtime::setMlpWeights(const std::vector<float>&,const std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
 bool Runtime::executeMlpForward(const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
 bool Runtime::executeMlpSecondBackward(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
-bool Runtime::executeMlpFirstBackward(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}}  // namespace phonelm::qnn
+bool Runtime::executeMlpFirstBackward(const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: MLP unavailable";return false;}
+bool Runtime::prepareReluBackward(uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: ReLU backward unavailable";return false;}
+bool Runtime::executeReluBackward(const std::vector<float>&,const std::vector<float>&,std::vector<std::uint8_t>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: ReLU backward unavailable";return false;}
+bool Runtime::prepareMlpFusedBackward(bool,std::string&e){e="QNN_DISABLED: fused backward unavailable";return false;}
+bool Runtime::executeMlpFusedBackward(const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::vector<std::uint8_t>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: fused backward unavailable";return false;}}  // namespace phonelm::qnn
