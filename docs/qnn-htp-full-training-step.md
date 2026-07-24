@@ -1,0 +1,69 @@
+# QNN HTP full training step
+
+## Scope
+
+This mode explicitly builds the numerical work of one bias-free two-layer ReLU MLP training step as a QNN graph for the QAIRT 2.48 HTP backend. QNN automatic differentiation is not used. CPU code still supplies mini-batches, calls `graphExecute`, hands the output weight buffers to the next step, reads results, and performs correctness/reporting work.
+
+Validated stack: QAIRT `2.48.40.260702151143`, QNN Core API `2.37.0`, HTP Backend API `5.48.0`, V81 Stub/Skel, Android NDK `26.2.11394342`.
+
+## Graph
+
+Inputs are `X [B,I]`, `Y [B,O]`, `W1_current [I,H]`, `W2_current [H,O]`, and dynamic `learning_rate [1,1]`.
+
+```text
+Z1 = MatMul(X, W1_current)
+H  = ReLU(Z1)
+P  = MatMul(H, W2_current)
+E  = ElementWiseSubtract(P, Y)
+E2 = ElementWiseMultiply(E, E)
+loss = ReduceMean(E2, axes={0,1}, keep_dims=true)
+dP = ElementWiseMultiply(E, static_grad_scale)
+dW2 = MatMul(H, dP, transpose_in0=true)
+dH  = MatMul(dP, W2_current, transpose_in1=true)
+mask = ElementWiseGreater(H, static_zero)
+dZ1 = ElementWiseSelect(mask, dH, static_zero)
+dW1 = MatMul(X, dZ1, transpose_in0=true)
+W1_next = ElementWiseSubtract(W1_current,
+                              ElementWiseMultiply(dW1, learning_rate))
+W2_next = ElementWiseSubtract(W2_current,
+                              ElementWiseMultiply(dW2, learning_rate))
+```
+
+`dH` depends on `W2_current`; it does not depend on `W2_next`. Loss has shape `[1,1]`, represents the mean over all `B*O` elements, and uses FP32 accumulation supported by the HTP ReduceMean kernel. `static_grad_scale [1,1]` contains `2/(B*O)`. The ReduceMean axes tensor is STATIC `UINT32 [2] = {0,1}`. The ReLU-backward zero tensor is full shape `[B,H]`; the mask is `BOOL_8`. The derivative rule is `H > 0`, otherwise zero.
+
+## Tensor exposure
+
+Correctness mode exposes `H`, `P`, `E`, `dP`, `dW2`, `dH`, `mask`, `dZ1`, and `dW1` as APP_READ outputs in addition to `loss`, `W1_next`, and `W2_next`. Benchmark mode exposes only the three required outputs; diagnostic values remain NATIVE intermediates. Inputs are APP_WRITE. The axes, gradient scale, and zero constants are STATIC.
+
+## Weight handoff
+
+The graph has no cycle and retains no automatic weight state. Two app-owned buffers per weight are used. Within an execute, current input and next output pointers are always distinct. Because `graphExecute` is synchronous, the two vector owners are swapped only after success; the former input buffer becomes the next output buffer. This is a true ping-pong binding with zero copied weight bytes per step. No unverified in-place alias is used.
+
+## Lifecycle and execute count
+
+The training graph is created and finalized once per run and reused for every mini-batch. One `graphExecute` performs one numerical training step. The previous retained baseline uses one forward execute and one fused-backward execute per step, while CPU computes loss, dP, and SGD. The new mode reduces this from two executes to one. Initialization, first execute, steady execute, handoff, and full-step timings are reported separately; performance claims use benchmark mode and not the CPU analytic reference work.
+
+## Correctness details
+
+Micro tests first validate MSE/dP and SGD using `ElementWiseSubtract`, `ElementWiseMultiply`, and `ReduceMean`. Full correctness compares every exposed tensor and next weight with the CPU analytic implementation. A BOOL mask mismatch is also checked against the HTP-produced `H`; this must be zero. CPU-versus-HTP mask differences caused by a MatMul value crossing zero are separately counted and accepted only when the corresponding CPU `|Z1| < 1e-3`; the same strict `> 0` rule is used on both paths.
+
+Trajectory reports save deterministic weighted checksums, L2 norms, CPU/HTP maximum differences, and loss at steps 0, 1, 2, 5, 10, 20, 50, 100, and the final step. Teacher/student generation, initialization, batch order, and learning rate are shared with the existing MLP tests. Teacher-weight identity is not a success condition because hidden-unit permutation and ReLU scaling symmetries exist.
+
+## Fallback and CPU boundary
+
+Full-step mode fails immediately if any graph create/finalize/execute, loss, dP, gradient, or optimizer result is unavailable. It never substitutes CPU loss, dP, ReLU backward, linear backward, or SGD. `cpu_fallback=false`, `htp_loss_used=true`, `htp_dp_used=true`, `htp_optimizer_used=true`, and `htp_full_step_used=true` are emitted on success.
+
+It is accurate to say that the numerical training step—forward, MSE loss, dP, linear backward, ReLU backward, and SGD weight update—runs in an explicit HTP graph. It is not accurate to say that training uses no CPU, that HTP automatically retains weights between steps, or that QNN performs automatic differentiation.
+
+## Reproduction
+
+```powershell
+.\scripts\run_qnn_htp_full_step_tests.ps1 `
+  -QairtSdkRoot 'C:\Qualcomm\AIStack\QAIRT\2.48.40.260702' `
+  -ExpectedBuildId '2.48.40.260702151143' `
+  -Repetitions 3 `
+  -Seeds 20260710,20260711,20260712,20260713,20260714 `
+  -RunPerformance
+```
+
+The runner requires exactly one online ADB target, redacts the endpoint from persisted data, enforces its thermal guard, resumes successful run files, audits the APK against QAIRT 2.48, and does not add APKs, Qualcomm binaries, logs, CSV, JSON, or generated reports to Git.

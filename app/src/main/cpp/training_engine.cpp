@@ -92,6 +92,10 @@ const char* executionModeName(ExecutionMode mode) {
         case ExecutionMode::QNN_HTP_RELU_BACKWARD_CHECK: return "QNN_HTP_RELU_BACKWARD_CHECK";
         case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD: return "QNN_HTP_MLP_FUSED_BACKWARD";
         case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK: return "QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK";
+        case ExecutionMode::QNN_HTP_MSE_CHECK: return "QNN_HTP_MSE_CHECK";
+        case ExecutionMode::QNN_HTP_SGD_CHECK: return "QNN_HTP_SGD_CHECK";
+        case ExecutionMode::QNN_HTP_MLP_FULL_STEP: return "QNN_HTP_MLP_FULL_STEP";
+        case ExecutionMode::QNN_HTP_MLP_FULL_STEP_BENCHMARK: return "QNN_HTP_MLP_FULL_STEP_BENCHMARK";
         default: return "UNKNOWN";
     }
 }
@@ -145,6 +149,10 @@ std::string TrainingEngine::run(ExecutionMode mode,
         case ExecutionMode::QNN_HTP_RELU_BACKWARD_CHECK:
         case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD:
         case ExecutionMode::QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK:
+        case ExecutionMode::QNN_HTP_MSE_CHECK:
+        case ExecutionMode::QNN_HTP_SGD_CHECK:
+        case ExecutionMode::QNN_HTP_MLP_FULL_STEP:
+        case ExecutionMode::QNN_HTP_MLP_FULL_STEP_BENCHMARK:
             return qnn::runMlpExperiment(mode, config, stopRequested, log);
         default: {
             const std::string report =

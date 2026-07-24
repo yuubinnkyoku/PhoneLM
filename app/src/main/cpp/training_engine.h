@@ -38,6 +38,10 @@ enum class ExecutionMode : int {
     QNN_HTP_RELU_BACKWARD_CHECK = 27,
     QNN_HTP_MLP_FUSED_BACKWARD = 28,
     QNN_HTP_MLP_FUSED_BACKWARD_BENCHMARK = 29,
+    QNN_HTP_MSE_CHECK = 30,
+    QNN_HTP_SGD_CHECK = 31,
+    QNN_HTP_MLP_FULL_STEP = 32,
+    QNN_HTP_MLP_FULL_STEP_BENCHMARK = 33,
 };
 
 const char* executionModeName(ExecutionMode mode);

@@ -41,6 +41,21 @@ struct RuntimeMetrics {
     std::vector<double> dWeightXBindUs;
     std::vector<double> dPredictionBindUs;
     std::vector<double> dWeightOutputBindUs;};
+
+struct MlpFullStepOutputs {
+    float loss = 0.0f;
+    std::vector<float> w1Next;
+    std::vector<float> w2Next;
+    std::vector<float> prediction;
+    std::vector<float> hidden;
+    std::vector<float> error;
+    std::vector<float> dPrediction;
+    std::vector<float> dW2;
+    std::vector<float> dHidden;
+    std::vector<std::uint8_t> mask;
+    std::vector<float> dZ1;
+    std::vector<float> dW1;
+};
 class Runtime {
 public:
     Runtime();
@@ -94,7 +109,28 @@ public:
                                   std::string& error);
     bool executeMlpFirstBackward(const std::vector<float>& input,
                                  const std::vector<float>& dZ1,
-                                 std::vector<float>& dW1, std::string& error);    const RuntimeMetrics& metrics() const;
+                                 std::vector<float>& dW1, std::string& error);
+    bool prepareTrainingOpsMicro(uint32_t batchSize, uint32_t outputDimension,
+                                 uint32_t weightRows, uint32_t weightColumns,
+                                 std::string& error);
+    bool executeTrainingOpsMicro(const std::vector<float>& prediction,
+                                 const std::vector<float>& target,
+                                 const std::vector<float>& weight,
+                                 const std::vector<float>& dWeight,
+                                 float learningRate, float& loss,
+                                 std::vector<float>& dPrediction,
+                                 std::vector<float>& weightNext,
+                                 std::string& error);
+    bool prepareMlpFullStep(uint32_t batchSize, uint32_t inputDimension,
+                            uint32_t hiddenDimension, uint32_t outputDimension,
+                            bool diagnosticOutputs, std::string& error);
+    bool executeMlpFullStep(const std::vector<float>& input,
+                            const std::vector<float>& target,
+                            const std::vector<float>& w1Current,
+                            const std::vector<float>& w2Current,
+                            float learningRate, MlpFullStepOutputs& outputs,
+                            std::string& error);
+    const RuntimeMetrics& metrics() const;
 
 private:
     BackendInfo info_;

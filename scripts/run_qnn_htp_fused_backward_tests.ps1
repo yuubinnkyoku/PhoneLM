@@ -29,7 +29,7 @@ function RunMode([string]$mode,[string]$name,[int]$b,[int]$i,[int]$h,[int]$o,[in
     Adb @('shell','am','force-stop',$package)|Out-Null;Adb @('shell','run-as',$package,'rm','-f','files/device-test-result.txt')|Out-Null
     $rate=$lr.ToString('R',[Globalization.CultureInfo]::InvariantCulture);$bm=if($benchmark){'true'}else{'false'}
     Adb @('shell','am','start','-W','-n',$activity,'--es','phonelm.mode',$mode,'--ei','phonelm.batch_size',"$b",'--ei','phonelm.dimension',"$i",'--ei','phonelm.hidden_dimension',"$h",'--ei','phonelm.output_dimension',"$o",'--ei','phonelm.steps',"$steps",'--ei','phonelm.sample_count',"$samples",'--ei','phonelm.epochs',"$epochs",'--ez','phonelm.benchmark_mode',$bm,'--es','phonelm.learning_rate',$rate,'--es','phonelm.seed',"$seed")|Out-Null
-    for($n=0;$n-lt 1200;$n++){Start-Sleep -Milliseconds 500;$x=(Adb @('shell','run-as',$package,'cat','files/device-test-result.txt'))-join "`n";if($x-match '(?m)^status=(SUCCESS|FAILED)$'){break}}
+    for($n=0;$n-lt 1200;$n++){Start-Sleep -Milliseconds 500;$x=(& $adb -s $device shell run-as $package cat files/device-test-result.txt 2>$null)-join "`n";if($x-match '(?m)^status=(SUCCESS|FAILED)$'){break}}
     [IO.File]::WriteAllText($path,$x,[Text.UTF8Encoding]::new($false))
   }
   $after=DeviceState;$f=Fields $x

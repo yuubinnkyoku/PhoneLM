@@ -69,4 +69,9 @@ bool Runtime::executeMlpFirstBackward(const std::vector<float>&,const std::vecto
 bool Runtime::prepareReluBackward(uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: ReLU backward unavailable";return false;}
 bool Runtime::executeReluBackward(const std::vector<float>&,const std::vector<float>&,std::vector<std::uint8_t>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: ReLU backward unavailable";return false;}
 bool Runtime::prepareMlpFusedBackward(bool,std::string&e){e="QNN_DISABLED: fused backward unavailable";return false;}
-bool Runtime::executeMlpFusedBackward(const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::vector<std::uint8_t>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: fused backward unavailable";return false;}}  // namespace phonelm::qnn
+bool Runtime::executeMlpFusedBackward(const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,std::vector<float>&,std::vector<float>&,std::vector<std::uint8_t>&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: fused backward unavailable";return false;}
+bool Runtime::prepareTrainingOpsMicro(uint32_t,uint32_t,uint32_t,uint32_t,std::string&e){e="QNN_DISABLED: training ops micro unavailable";return false;}
+bool Runtime::executeTrainingOpsMicro(const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,float,float&,std::vector<float>&,std::vector<float>&,std::string&e){e="QNN_DISABLED: training ops micro unavailable";return false;}
+bool Runtime::prepareMlpFullStep(uint32_t,uint32_t,uint32_t,uint32_t,bool,std::string&e){e="QNN_DISABLED: full step unavailable";return false;}
+bool Runtime::executeMlpFullStep(const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,const std::vector<float>&,float,MlpFullStepOutputs&,std::string&e){e="QNN_DISABLED: full step unavailable";return false;}
+}  // namespace phonelm::qnn

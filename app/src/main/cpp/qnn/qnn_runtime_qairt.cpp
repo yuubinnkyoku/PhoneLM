@@ -75,6 +75,43 @@ struct Runtime::Impl {
         std::vector<float> zero;
         bool diagnosticOutputs = false;
     } fusedBackward;
+    struct TrainingOpsMicro {
+        Qnn_GraphHandle_t graph = nullptr;
+        Qnn_Tensor_t inputs[6] = {QNN_TENSOR_INIT, QNN_TENSOR_INIT, QNN_TENSOR_INIT,
+                                  QNN_TENSOR_INIT, QNN_TENSOR_INIT, QNN_TENSOR_INIT};
+        Qnn_Tensor_t error = QNN_TENSOR_INIT;
+        Qnn_Tensor_t squared = QNN_TENSOR_INIT;
+        Qnn_Tensor_t loss = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dPrediction = QNN_TENSOR_INIT;
+        Qnn_Tensor_t scaledWeight = QNN_TENSOR_INIT;
+        Qnn_Tensor_t weightNext = QNN_TENSOR_INIT;
+        Qnn_Tensor_t axes = QNN_TENSOR_INIT;
+        uint32_t predictionDims[2]{}, weightDims[2]{}, scalarDims[2]{1, 1};
+        uint32_t axesDims[1]{2}, lossDims[2]{1, 1};
+        uint32_t axesData[2]{0, 1};
+        float gradScale = 0.0f;
+    } trainingOpsMicro;
+    struct MlpFullStep {
+        Qnn_GraphHandle_t graph = nullptr;
+        Qnn_Tensor_t inputs[5] = {QNN_TENSOR_INIT, QNN_TENSOR_INIT, QNN_TENSOR_INIT,
+                                  QNN_TENSOR_INIT, QNN_TENSOR_INIT};
+        Qnn_Tensor_t z1 = QNN_TENSOR_INIT, hidden = QNN_TENSOR_INIT;
+        Qnn_Tensor_t prediction = QNN_TENSOR_INIT, error = QNN_TENSOR_INIT;
+        Qnn_Tensor_t squared = QNN_TENSOR_INIT, loss = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dPrediction = QNN_TENSOR_INIT, dW2 = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dHidden = QNN_TENSOR_INIT, mask = QNN_TENSOR_INIT;
+        Qnn_Tensor_t dZ1 = QNN_TENSOR_INIT, dW1 = QNN_TENSOR_INIT;
+        Qnn_Tensor_t scaledDW1 = QNN_TENSOR_INIT, scaledDW2 = QNN_TENSOR_INIT;
+        Qnn_Tensor_t w1Next = QNN_TENSOR_INIT, w2Next = QNN_TENSOR_INIT;
+        Qnn_Tensor_t axes = QNN_TENSOR_INIT, gradScale = QNN_TENSOR_INIT;
+        Qnn_Tensor_t zero = QNN_TENSOR_INIT;
+        uint32_t xDims[2]{}, yDims[2]{}, w1Dims[2]{}, w2Dims[2]{};
+        uint32_t hiddenDims[2]{}, lossDims[2]{1, 1}, scalarDims[2]{1, 1};
+        uint32_t axesDims[1]{2}, axesData[2]{0, 1};
+        float gradScaleData = 0.0f;
+        std::vector<float> zeroData;
+        bool diagnosticOutputs = false;
+    } mlpFullStep;
 };
 
 const char* backendKindName(QnnBackendKind kind) {
@@ -210,13 +247,14 @@ bool Runtime::initialize(QnnBackendKind kind, std::string& error) {
 
 static void tensor(Qnn_Tensor_t& t, const char* name, Qnn_TensorType_t type,
                    uint32_t* dims,
-                   Qnn_DataType_t dataType = QNN_DATATYPE_FLOAT_32) {
+                   Qnn_DataType_t dataType = QNN_DATATYPE_FLOAT_32,
+                   uint32_t rank = 2) {
     t.version = QNN_TENSOR_VERSION_1;
     t.v1.name = name;
     t.v1.type = type;
     t.v1.dataFormat = QNN_TENSOR_DATA_FORMAT_DENSE;
     t.v1.dataType = dataType;
-    t.v1.rank = 2;
+    t.v1.rank = rank;
     t.v1.dimensions = dims;
     t.v1.memType = QNN_TENSORMEMTYPE_RAW;
 }
@@ -444,4 +482,5 @@ bool Runtime::executeMatMul(const std::vector<float>& a, const std::vector<float
     return weightOk && executePrepared(a, out, error);
 }
 #include "qnn_runtime_mlp.inc"
+#include "qnn_runtime_full_step.inc"
 }
