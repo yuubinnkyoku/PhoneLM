@@ -1,0 +1,14 @@
+{
+  "device_model": "nubia Z80 Ultra / NX741J",
+  "soc": "SM8850",
+  "htp_architecture": "V81",
+  "android_version": "16",
+  "android_api_level": 36,
+  "qairt_build_id": "2.48.40.260702151143",
+  "qnn_core_api": "2.37.0",
+  "htp_backend_api": "5.48.0",
+  "android_ndk": "26.2.11394342",
+  "cmake": "3.22.1",
+  "abi": "arm64-v8a",
+  "experiment_source_commit": "855d45f7e70d7dc39b0ff470f400ef831066e12a"
+}
